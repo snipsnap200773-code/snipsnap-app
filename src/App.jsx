@@ -39,10 +39,10 @@ function App() {
   const [selectedMembers, setSelectedMembers] = useState([]); 
   const [activeFacility, setActiveFacility] = useState("");
 
-  // 🌟【重要】施設マスターをDBからリアルタイムに取得するためのState
+  // 🌟 施設マスターをDBからリアルタイムに取得するためのState
   const [dbFacilities, setDbFacilities] = useState([]);
 
-  // 🌟【重要】定期ルール維持（特定施設固有のロジック）
+  // 🌟 定期ルール維持
   const regularRules = [
     { facility: 'マリアの丘', day: 3, week: -1, time: '13:00' },
     { facility: 'マリアの丘', day: 4, week: -1, time: '13:00' },
@@ -54,22 +54,29 @@ function App() {
 
   const colorList = ['６-OK', '７-OK', '８-OK', '９-OK', '６-PA', '７-PA', '８-PA', '９-PA'];
 
-  // 🌟【新機能】隠しURLによる自動ログインチェック
+  // 🌟【最強機能】隠しURL ＆ ログイン状態の記憶
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const secretCode = params.get('admin');
 
-    // 三土手さん専用の合言葉チェック
+    // 1. 合言葉URL「?admin=dmaaaahkmm0216」でアクセスした場合
     if (secretCode === 'dmaaaahkmm0216') {
+      localStorage.setItem('admin_session', 'true'); // ブラウザに証拠を保存
       setUser({ role: 'barber', name: '三土手さん' });
       setPage('admin-top');
-      
-      // 履歴に残らないようURLからパラメータを消去
-      window.history.replaceState({}, document.title, window.location.pathname);
+      window.history.replaceState({}, document.title, window.location.pathname); // URLを掃除
+      return;
+    }
+
+    // 2. 合言葉がない場合、ブラウザの記憶をチェック
+    const isAdminSession = localStorage.getItem('admin_session');
+    if (isAdminSession === 'true') {
+      setUser({ role: 'barber', name: '三土手さん' });
+      setPage('admin-top');
     }
   }, []);
 
-  // --- 🔄 Supabase 読み込みロジック（施設マスター取得を追加） ---
+  // --- 🔄 Supabase 読み込みロジック ---
   const refreshAllData = async () => {
     const { data: mData } = await supabase.from('members').select('*');
     if (mData) setUsers(mData);
@@ -86,7 +93,6 @@ function App() {
     const { data: nData } = await supabase.from('ng_dates').select('*');
     if (nData) setNgDates(nData.map(d => d.date));
 
-    // 🌟 施設名簿をDBから最新状態で読み込む
     const { data: fData } = await supabase.from('facilities').select('*');
     if (fData) setDbFacilities(fData);
   };
@@ -234,35 +240,28 @@ function App() {
     }
   };
 
-  useEffect(() => { window.scrollTo(0, 0); }, [page]);
-
   const handleLogin = async (id, pass) => {
     if (id === 'a' && pass === 'a') {
+      localStorage.setItem('admin_session', 'true'); // 手動ログインでも記憶させる
       setUser({ role: 'barber', name: '三土手さん' });
       setPage('admin-top');
       return;
     }
-    const { data: facility, error } = await supabase
-      .from('facilities')
-      .select('*')
-      .eq('id', id)
-      .eq('pw', pass)
-      .single();
-
+    const { data: facility, error } = await supabase.from('facilities').select('*').eq('id', id).eq('pw', pass).single();
     if (error || !facility) {
       alert('IDまたはパスワードが正しくありません');
     } else {
-      setUser({ 
-        role: 'facility', 
-        name: facility.name, 
-        facilityId: facility.id, 
-        details: facility 
-      });
+      setUser({ role: 'facility', name: facility.name, facilityId: facility.id, details: facility });
       setPage('menu');
     }
   };
 
-  const handleLogout = () => { setUser(null); setPage('menu'); };
+  // 🌟 ログアウト時は記憶を消す
+  const handleLogout = () => { 
+    localStorage.removeItem('admin_session');
+    setUser(null); 
+    setPage('menu'); 
+  };
 
   if (!user) return <Login onLogin={handleLogin} />;
 
@@ -292,10 +291,7 @@ function App() {
             {currentPageName === 'list' && (
               <ListPage
                 users={users.filter(u => u.facility === user.name)}
-                setUsers={async (updatedMyUsers) => {
-                  await supabase.from('members').upsert(updatedMyUsers);
-                  refreshAllData();
-                }}
+                setUsers={async (updated) => { await supabase.from('members').upsert(updated); refreshAllData(); }}
                 deleteUserFromMaster={deleteUserFromMaster}
                 setPage={setPage}
                 facilityName={user.name}
