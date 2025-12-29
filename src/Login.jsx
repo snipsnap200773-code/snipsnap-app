@@ -3,27 +3,26 @@ import React from 'react';
 export default function Login({ onLogin }) {
   const handleFormSubmit = (e) => {
     e.preventDefault(); 
-    const id = document.getElementById('uid').value;
-    const pw = document.getElementById('upw').value;
+    // 🌟 ブラウザが ID/PW を正しく認識できるように name 属性で取得します
+    const id = e.target.username.value;
+    const pw = e.target.password.value;
     onLogin(id, pw);
   };
 
   return (
     <div style={{ padding: '20px', textAlign: 'center', backgroundColor: '#f0f7f4', minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-      {/* 🌟 ロゴ・タイトルエリア */}
       <div style={{ marginBottom: '50px' }}>
         <h1 style={{ color: '#2d6a4f', fontSize: '40px', fontWeight: 'bold', margin: 0, letterSpacing: '2px' }}>SnipSnap</h1>
         <p style={{ color: '#52796f', fontSize: '15px', marginTop: '10px', fontWeight: 'bold' }}>訪問理美容予約・管理システム</p>
       </div>
 
-      {/* 🌟 フォームエリア：幅を PC でも寂しくない 400px まで許容 */}
       <form 
         onSubmit={handleFormSubmit} 
         style={{ 
           display: 'flex', 
           flexDirection: 'column', 
           gap: '20px', 
-          maxWidth: '400px', // 🌟 320pxから少し広げました
+          maxWidth: '400px', 
           width: '100%', 
           backgroundColor: 'white',
           padding: '40px 30px',
@@ -32,13 +31,28 @@ export default function Login({ onLogin }) {
         }}
       >
         <div style={{ textAlign: 'left' }}>
-          <label style={labelStyle}>ログインID</label>
-          <input id="uid" placeholder="admin / s1" style={inputStyle} required />
+          <label htmlFor="uid" style={labelStyle}>ログインID</label>
+          <input 
+            id="uid" 
+            name="username" // 🌟 ブラウザに「ここはIDですよ」と教える
+            autocomplete="username" // 🌟 自動補完を有効にする
+            placeholder="admin / s1" 
+            style={inputStyle} 
+            required 
+          />
         </div>
         
         <div style={{ textAlign: 'left' }}>
-          <label style={labelStyle}>パスワード</label>
-          <input id="upw" type="password" placeholder="••••••••" style={inputStyle} required />
+          <label htmlFor="upw" style={labelStyle}>パスワード</label>
+          <input 
+            id="upw" 
+            name="password" // 🌟 ブラウザに「ここはPWですよ」と教える
+            type="password" 
+            autocomplete="current-password" // 🌟 パスワード保存を促す
+            placeholder="••••••••" 
+            style={inputStyle} 
+            required 
+          />
         </div>
         
         <button type="submit" style={loginBtnStyle}>
@@ -53,7 +67,7 @@ export default function Login({ onLogin }) {
   );
 }
 
-// 🎨 デザイン（ゆったり広幅に合わせて微調整）
+// 🎨 デザイン（変更なし）
 const labelStyle = { fontSize: '13px', fontWeight: 'bold', color: '#2d6a4f', marginLeft: '5px', marginBottom: '8px', display: 'block' };
 const inputStyle = { 
   width: '100%', 
