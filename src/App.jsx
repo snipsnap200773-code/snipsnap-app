@@ -44,10 +44,10 @@ function App() {
 
   // 🌟【重要】定期ルール維持（特定施設固有のロジック）
   const regularRules = [
-    { facility: 'アリアの丘', day: 3, week: -1, time: '13:00' },
-    { facility: 'アリアの丘', day: 4, week: -1, time: '13:00' },
-    { facility: 'アリアの丘', day: 3, week: -2, time: '13:00' },
-    { facility: 'アリアの丘', day: 4, week: -2, time: '13:00' },
+    { facility: 'マリアの丘', day: 3, week: -1, time: '13:00' },
+    { facility: 'マリアの丘', day: 4, week: -1, time: '13:00' },
+    { facility: 'マリアの丘', day: 3, week: -2, time: '13:00' },
+    { facility: 'マリアの丘', day: 4, week: -2, time: '13:00' },
     { facility: 'もえぎ野の杜', day: 0, week: 2, time: '09:00' },
     { facility: 'もえぎ野の杜', day: 0, week: 3, time: '09:00' },
   ];
@@ -242,6 +242,7 @@ function App() {
     // 2. 施設アカウント・DB問い合わせログイン
     const { data: facility, error } = await supabase
       .from('facilities')
+      .select('*')
       .eq('id', id)
       .eq('pw', pass)
       .single();
