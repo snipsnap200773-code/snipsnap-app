@@ -54,25 +54,33 @@ function App() {
 
   const colorList = ['６-OK', '７-OK', '８-OK', '９-OK', '６-PA', '７-PA', '８-PA', '９-PA'];
 
-  // 🌟【最強機能】隠しURL ＆ ログイン状態の記憶
+  // 🌟【最強機能】全ユーザー対応・自動ログイン復元ロジック
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const secretCode = params.get('admin');
 
-    // 1. 合言葉URL「?admin=dmaaaahkmm0216」でアクセスした場合
+    // 1. 三土手さん専用合言葉URL（?admin=dmaaaahkmm0216）の場合
     if (secretCode === 'dmaaaahkmm0216') {
-      localStorage.setItem('admin_session', 'true'); // ブラウザに証拠を保存
-      setUser({ role: 'barber', name: '三土手さん' });
+      const adminUser = { role: 'barber', name: '三土手さん' };
+      localStorage.setItem('saved_user', JSON.stringify(adminUser)); // ブラウザに証拠を保存
+      setUser(adminUser);
       setPage('admin-top');
       window.history.replaceState({}, document.title, window.location.pathname); // URLを掃除
       return;
     }
 
-    // 2. 合言葉がない場合、ブラウザの記憶をチェック
-    const isAdminSession = localStorage.getItem('admin_session');
-    if (isAdminSession === 'true') {
-      setUser({ role: 'barber', name: '三土手さん' });
-      setPage('admin-top');
+    // 2. ブラウザの記憶（localStorage）からログイン情報を復元
+    const saved = localStorage.getItem('saved_user');
+    if (saved) {
+      try {
+        const parsedUser = JSON.parse(saved);
+        setUser(parsedUser);
+        // 役割に応じて初期ページを決定
+        setPage(parsedUser.role === 'barber' ? 'admin-top' : 'menu');
+      } catch (e) {
+        console.error("ログイン情報の復元に失敗しました", e);
+        localStorage.removeItem('saved_user');
+      }
     }
   }, []);
 
@@ -240,25 +248,37 @@ function App() {
     }
   };
 
+  // 🌟 ログイン情報の記憶処理を統合
   const handleLogin = async (id, pass) => {
+    let loggedInUser = null;
+
     if (id === 'a' && pass === 'a') {
-      localStorage.setItem('admin_session', 'true'); // 手動ログインでも記憶させる
-      setUser({ role: 'barber', name: '三土手さん' });
-      setPage('admin-top');
-      return;
-    }
-    const { data: facility, error } = await supabase.from('facilities').select('*').eq('id', id).eq('pw', pass).single();
-    if (error || !facility) {
-      alert('IDまたはパスワードが正しくありません');
+      loggedInUser = { role: 'barber', name: '三土手さん' };
     } else {
-      setUser({ role: 'facility', name: facility.name, facilityId: facility.id, details: facility });
-      setPage('menu');
+      const { data: facility, error } = await supabase.from('facilities').select('*').eq('id', id).eq('pw', pass).single();
+      if (!error && facility) {
+        loggedInUser = { 
+          role: 'facility', 
+          name: facility.name, 
+          facilityId: facility.id, 
+          details: facility 
+        };
+      }
+    }
+
+    if (loggedInUser) {
+      // 🌟 ブラウザにログイン情報を保存（JSON形式）
+      localStorage.setItem('saved_user', JSON.stringify(loggedInUser));
+      setUser(loggedInUser);
+      setPage(loggedInUser.role === 'barber' ? 'admin-top' : 'menu');
+    } else {
+      alert('IDまたはパスワードが正しくありません');
     }
   };
 
-  // 🌟 ログアウト時は記憶を消す
+  // 🌟 ログアウト時は記憶を完全に消去
   const handleLogout = () => { 
-    localStorage.removeItem('admin_session');
+    localStorage.removeItem('saved_user');
     setUser(null); 
     setPage('menu'); 
   };
