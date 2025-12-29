@@ -54,6 +54,21 @@ function App() {
 
   const colorList = ['６-OK', '７-OK', '８-OK', '９-OK', '６-PA', '７-PA', '８-PA', '９-PA'];
 
+  // 🌟【新機能】隠しURLによる自動ログインチェック
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const secretCode = params.get('admin');
+
+    // 三土手さん専用の合言葉チェック
+    if (secretCode === 'dmaaaahkmm0216') {
+      setUser({ role: 'barber', name: '三土手さん' });
+      setPage('admin-top');
+      
+      // 履歴に残らないようURLからパラメータを消去
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   // --- 🔄 Supabase 読み込みロジック（施設マスター取得を追加） ---
   const refreshAllData = async () => {
     const { data: mData } = await supabase.from('members').select('*');
@@ -84,17 +99,10 @@ function App() {
   const setHistoryListWithSync = async (updateArg) => {
     const newList = typeof updateArg === 'function' ? updateArg(historyList) : updateArg;
     setHistoryList(newList);
-
     if (newList.length > 0) {
       const dataToSync = newList.map(({ id, created_at, ...rest }) => rest);
-
-      const { error } = await supabase
-        .from('history')
-        .upsert(dataToSync, { onConflict: 'date,facility,name' });
-
-      if (error) {
-        console.error("履歴保存エラー:", error);
-      }
+      const { error } = await supabase.from('history').upsert(dataToSync, { onConflict: 'date,facility,name' });
+      if (error) console.error("履歴保存エラー:", error);
     }
   };
 
@@ -102,7 +110,6 @@ function App() {
   const setBookingListWithSync = async (updateArg) => {
     const newList = typeof updateArg === 'function' ? updateArg(bookingList) : updateArg;
     setBookingList(newList);
-
     if (newList.length > 0) {
       const formattedBookings = newList.map(b => ({
         ...b,
@@ -216,7 +223,6 @@ function App() {
     });
 
     const { error } = await supabase.from('bookings').upsert(newConfirmedEntries);
-    
     if (!error) {
       for (const d of datesToConfirm) {
           await supabase.from('keep_dates').delete().match({ facility: user.name, date: d });
@@ -230,16 +236,12 @@ function App() {
 
   useEffect(() => { window.scrollTo(0, 0); }, [page]);
 
-  // 🌟【最重要】DB連動型ログインロジック（一ミリも省略せず完全版）
   const handleLogin = async (id, pass) => {
-    // 1. 三土手さん専用・管理者ログイン
     if (id === 'a' && pass === 'a') {
       setUser({ role: 'barber', name: '三土手さん' });
       setPage('admin-top');
       return;
     }
-
-    // 2. 施設アカウント・DB問い合わせログイン
     const { data: facility, error } = await supabase
       .from('facilities')
       .select('*')
@@ -276,13 +278,8 @@ function App() {
             {currentPageName === 'task' && <TaskMode bookingList={bookingList} historyList={historyList} setHistoryList={setHistoryListWithSync} setBookingList={setBookingListWithSync} setPage={setPage} users={users} activeFacility={activeFacility} setActiveFacility={setActiveFacility} menuPrices={menuPrices} colorList={colorList} updateUserNotes={updateUserNotes} />}
             {currentPageName === 'task-confirm' && <TaskConfirmMode historyList={historyList} setPage={setPage} facilityName={activeFacility} user={user} completeFacilityBooking={() => refreshAllData()} />}
             {currentPageName === 'admin-reserve' && <AdminScheduleManager keepDates={keepDates} setKeepDates={setManualKeepDatesWithSync} bookingList={bookingList} setBookingList={setBookingListWithSync} setPage={setPage} user={user} historyList={historyList} allUsers={users} selectedMembers={selectedMembers} />}
-            
-            {/* 🌟 施設管理：自らDBを参照するため引数構成を最適化 */}
             {currentPageName === 'admin-facility-list' && <AdminFacilityList setPage={setPage} />}
-            
-            {/* 🌟 利用者マスター：DBから取得した動的施設リスト（dbFacilities）を渡す */}
             {currentPageName === 'master-user-list' && <AdminMasterUserList users={users} setUsers={setUsers} facilityMaster={dbFacilities} setPage={setPage} historyList={historyList} bookingList={bookingList} />}
-            
             {currentPageName === 'dashboard' && <AdminDashboard historyList={historyList} bookingList={bookingList} setPage={setPage} />}
             {currentPageName === 'visit-log' && <VisitHistory setPage={setPage} historyList={historyList} bookingList={bookingList} user={user} />}
             {currentPageName === 'admin-history' && <AdminHistory setPage={setPage} historyList={historyList} bookingList={bookingList} />}
@@ -312,29 +309,11 @@ function App() {
             {currentPageName === 'schedule' && <ScheduleManager keepDates={keepDates} setKeepDates={setManualKeepDatesWithSync} bookingList={bookingList} setBookingList={setBookingListWithSync} setPage={setPage} user={user} historyList={historyList} completeFacilityBooking={completeFacilityBooking} users={users} />}
             {currentPageName === 'history' && <VisitHistory setPage={setPage} historyList={historyList} bookingList={bookingList} user={user} />}
             {currentPageName === 'info' && <FacilityInfo user={user} setPage={setPage} />}
-            {currentPageName === 'print-list' && (
-              <PrintUserList
-                users={users.filter(u => u.facility === user.name)}
-                historyList={historyList}
-                keepDates={keepDates}
-                bookingList={bookingList}
-                facilityName={user.name}
-                setPage={setPage}
-                pageParams={page}
-              />
-            )}
-            {currentPageName === 'facility-invoice' && (
-              <FacilityInvoice
-                historyList={historyList}
-                bookingList={bookingList}
-                user={user}
-                setPage={setPage}
-              />
-            )}
+            {currentPageName === 'print-list' && <PrintUserList users={users.filter(u => u.facility === user.name)} historyList={historyList} keepDates={keepDates} bookingList={bookingList} facilityName={user.name} setPage={setPage} pageParams={page} />}
+            {currentPageName === 'facility-invoice' && <FacilityInvoice historyList={historyList} bookingList={bookingList} user={user} setPage={setPage} />}
           </>
         )}
       </div>
-      {/* 🌟 デバッグ用/緊急用の簡易ログアウト */}
       <div style={{ position: 'fixed', bottom: 10, right: 10, zIndex: 9999 }}>
         <button onClick={handleLogout} style={{ fontSize: '10px', opacity: 0.3, border: 'none', background: 'none', cursor: 'pointer' }}>Logout</button>
       </div>
