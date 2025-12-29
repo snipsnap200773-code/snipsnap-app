@@ -1,0 +1,80 @@
+/* 🌟 全体ルール：スマホのフォントサイズ設定を無視して固定する */
+html {
+  -webkit-text-size-adjust: 100%; /* iOS用 */
+  text-size-adjust: 100%;         /* Android / PC用 */
+}
+
+/* 全体をリセット */
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background-color: #f0f7f4;
+  font-family: sans-serif;
+  color: #333;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: safe flex-start;
+}
+
+/* 📱 カレンダー：横に7つ並べる魔法 */
+.calendar-grid {
+  display: grid !important;
+  grid-template-columns: repeat(7, 1fr) !important;
+  gap: 8px;
+  width: 100%;
+  margin: 20px 0;
+}
+
+/* 📱 日付：正方形を維持する */
+.calendar-day-cell {
+  aspect-ratio: 1 / 1 !important;
+  background-color: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+/* 📱 共通：浮きボタン（左下：戻る） */
+.floating-back-btn {
+  position: fixed;
+  bottom: 25px;
+  left: 20px;
+  width: 54px;   /* 綺麗な正円にするための幅 */
+  height: 54px;  /* 綺麗な正円にするための高さ */
+  border-radius: 27px; /* 半分の値で角を丸める */
+  background-color: #1e293b; /* 管理者らしい落ち着いた紺色 */
+  color: white;
+  border: none;
+  box-shadow: 0 6px 15px rgba(0,0,0,0.25);
+  z-index: 2000;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+/* 📱 共通：ボタンエリア（右下：確定） 👈 三土手さんのご指摘通り、残します！ */
+.floating-confirm-area {
+  position: fixed;
+  bottom: 25px;
+  right: 20px;
+  z-index: 2000;
+}
+
+/* 戻るボタンのホバー（PC用） */
+.floating-back-btn:active {
+  transform: scale(0.9);
+}
