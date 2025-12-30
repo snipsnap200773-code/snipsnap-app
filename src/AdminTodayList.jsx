@@ -4,20 +4,19 @@ export default function AdminTodayList({ facilityName, bookingList, users, setPa
   const now = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(null);
+  const [sortBy, setSortBy] = useState("room");
 
   const monthKey = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
 
-  // 1. その施設の「選択された月」にある確定予約をすべて取得
   const monthlyBookings = bookingList
     .filter(b => b.facility === facilityName && b.status === 'confirmed' && b.date.startsWith(monthKey))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // 2. 表示する予約データを決定（選択された日、なければ一番新しい日）
+  // 🌟 初期表示は月の最新の予約。選択されたらそれ。
   const currentBooking = selectedDate 
     ? monthlyBookings.find(b => b.date === selectedDate)
     : monthlyBookings[monthlyBookings.length - 1];
 
-  // 照合ロジック
   const targetMembers = currentBooking && Array.isArray(currentBooking.members)
     ? users.filter(u => {
         if (u.facility !== facilityName) return false;
@@ -32,9 +31,13 @@ export default function AdminTodayList({ facilityName, bookingList, users, setPa
     : [];
 
   const sortedMembers = [...targetMembers].sort((a, b) => {
-    const rA = String(a.room || "");
-    const rB = String(b.room || "");
-    return rA.localeCompare(rB, undefined, { numeric: true });
+    if (sortBy === "room") {
+      const rA = String(a.room || "");
+      const rB = String(b.room || "");
+      return rA.localeCompare(rB, undefined, { numeric: true });
+    } else {
+      return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
+    }
   });
 
   const groupedMembers = sortedMembers.reduce((acc, m) => {
@@ -48,10 +51,15 @@ export default function AdminTodayList({ facilityName, bookingList, users, setPa
 
   const sortedFloors = Object.keys(groupedMembers).sort();
 
-  // 🌟 日付が手動で選ばれた時だけ自動印刷が走るように調整
+  // 🌟 修正ポイント：selectedDate がセットされたら印刷し、その後すぐにリセットする
   useEffect(() => {
     if (selectedDate && targetMembers.length > 0) {
-      const timer = setTimeout(() => window.print(), 1000);
+      const timer = setTimeout(() => {
+        window.print();
+        // 印刷プレビューが出た（または閉じた）後に選択状態をクリアすることで
+        // 2回目に同じボタンを押しても「変化」として認識されるようになります。
+        setSelectedDate(null);
+      }, 500);
       return () => clearTimeout(timer);
     }
   }, [selectedDate, targetMembers.length]);
@@ -72,7 +80,13 @@ export default function AdminTodayList({ facilityName, bookingList, users, setPa
 
   const changeMonth = (offset) => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset, 1));
-    setSelectedDate(null); // 月を変えたら選択をリセット
+    setSelectedDate(null);
+  };
+
+  // 🌟 ボタンクリック時の関数（あえて一度 null にしてからセットする）
+  const handleDateClick = (date) => {
+    setSelectedDate(null); 
+    setTimeout(() => setSelectedDate(date), 10);
   };
 
   return (
@@ -81,33 +95,39 @@ export default function AdminTodayList({ facilityName, bookingList, users, setPa
         @media print { .no-print { display: none !important; } }
         table { width: 100%; border-collapse: collapse; margin-bottom: 30px; table-layout: fixed; }
         th { border: 1px solid #000; padding: 10px; font-size: 14px; background-color: #f8fafc; }
-        .date-btn { padding: 10px 15px; border: 1px solid #1e3a8a; border-radius: 8px; background: white; cursor: pointer; font-weight: bold; color: #1e3a8a; }
+        .date-btn { padding: 10px 15px; border: 1px solid #1e3a8a; border-radius: 8px; background: white; cursor: pointer; font-weight: bold; color: #1e3a8a; transition: all 0.2s; }
+        .date-btn:hover { background: #f0f7ff; }
         .date-btn.active { background: #1e3a8a; color: white; }
+        .sort-btn { padding: 6px 12px; border: 1px solid #1e3a8a; border-radius: 6px; background: white; cursor: pointer; font-size: 13px; color: #1e3a8a; font-weight: bold; }
+        .sort-btn.active { background: #1e3a8a; color: white; }
       `}</style>
       
       <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <button onClick={() => setPage('admin-top')} style={{ padding: '10px 20px', borderRadius: '8px', cursor: 'pointer' }}>
+        <button onClick={() => setPage('admin-top')} style={{ padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', border: '1px solid #ccc', background: '#fff' }}>
           ← 戻る
         </button>
         
-        {/* 🌟 月移動ナビゲーション */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', fontSize: '20px', fontWeight: 'bold' }}>
           <button onClick={() => changeMonth(-1)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>◀</button>
           <span>{currentMonth.getFullYear()}年 {currentMonth.getMonth() + 1}月</span>
           <button onClick={() => changeMonth(1)} style={{ fontSize: '24px', border: 'none', background: 'none', cursor: 'pointer' }}>▶</button>
         </div>
-        <div style={{ width: '80px' }}></div>
+
+        <div style={{ display: 'flex', gap: '5px' }}>
+          <button onClick={() => setSortBy('room')} className={`sort-btn ${sortBy === 'room' ? 'active' : ''}`}>部屋順</button>
+          <button onClick={() => setSortBy('name')} className={`sort-btn ${sortBy === 'name' ? 'active' : ''}`}>名前順</button>
+        </div>
       </div>
 
-      {/* 🌟 日付選択ボタン一覧 */}
       <div className="no-print" style={{ textAlign: 'center', marginBottom: '30px' }}>
         <p style={{ fontSize: '14px', color: '#666', marginBottom: '10px' }}>印刷する日を選んでください：</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px' }}>
           {monthlyBookings.length > 0 ? monthlyBookings.map(b => (
             <button 
               key={b.date} 
-              className={`date-btn ${selectedDate === b.date ? 'active' : ''}`}
-              onClick={() => setSelectedDate(b.date)}
+              // 🌟 onClick を handleDateClick に変更
+              className={`date-btn ${selectedDate === b.date ? 'active' : ''}`} 
+              onClick={() => handleDateClick(b.date)}
             >
               {formatShortDate(b.date)}
             </button>
@@ -137,11 +157,11 @@ export default function AdminTodayList({ facilityName, bookingList, users, setPa
                 <table>
                   <thead>
                     <tr>
-                      <th style={{ width: '20px' }}>済</th>
-                      <th style={{ width: '35px' }}>部屋</th>
+                      <th style={{ width: '35px' }}>済</th>
+                      <th style={{ width: '55px' }}>部屋</th>
                       <th style={{ width: '160px' }}>氏名</th>
                       <th style={{ width: '160px' }}>メニュー</th>
-                      <th style={{ width: '35px' }}>前回日</th>
+                      <th style={{ width: '50px' }}>前回日</th>
                       <th>備考・手書きメモ欄</th>
                     </tr>
                   </thead>

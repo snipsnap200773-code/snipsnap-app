@@ -1,7 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react'; // 🌟 useEffectを追加
 import { Layout } from './Layout';
 
 export default function AdminMenu({ setPage, setActiveFacility, dbFacilities }) {
+  
+  // 🌟 画面が表示された瞬間に一番上にスクロールさせる
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   // 🌟 メインメニュー
   const adminMenus = [
     { id: 'task', title: '今日のタスク💪', sub: 'みんなをキレイにするぞ', color: '#1e3a8a' },
@@ -45,7 +51,7 @@ export default function AdminMenu({ setPage, setActiveFacility, dbFacilities }) 
             ))}
           </div>
 
-          {/* 🌟 印刷セクション（ログアウトの上に移動 ＆ あいうえお順） */}
+          {/* 🌟 印刷セクション */}
           <div style={{ marginBottom: '20px', backgroundColor: '#fff', padding: '20px', borderRadius: '24px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
             <h3 style={{ fontSize: '14px', color: '#1e3a8a', marginBottom: '15px', textAlign: 'center', fontWeight: 'bold' }}>🖨️ 現場用リスト印刷（あいうえお順）</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
