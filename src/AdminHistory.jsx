@@ -142,7 +142,7 @@ export default function AdminHistory({ setPage, historyList = [], bookingList = 
                 {/* 🌟 欠席した方（新設） */}
                 {cancelMembers.length > 0 && (
                   <div style={{ marginTop: '20px' }}>
-                    <div style={{ marginBottom: '10px', fontSize: '12px', color: '#e11d48', fontWeight: 'bold' }}>🚩 当日欠席 ({cancelMembers.length}名)</div>
+                    <div style={{ marginBottom: '10px', fontSize: '12px', color: '#e11d48', fontWeight: 'bold' }}>🚩 当日キャンセル ({cancelMembers.length}名)</div>
                     {cancelMembers.map((m, i) => (
                       <div key={`cancel-${i}`} style={{ ...memberRowStyle, opacity: 0.6 }}>
                         <div>
@@ -151,7 +151,7 @@ export default function AdminHistory({ setPage, historyList = [], bookingList = 
                             <span style={{ fontWeight: 'bold', fontSize: '16px', color: '#e11d48' }}>{m.name} 様</span>
                           </div>
                         </div>
-                        <div style={{ ...menuTextStyle, backgroundColor: '#fff1f2', color: '#e11d48' }}>欠席</div>
+                        <div style={{ ...menuTextStyle, backgroundColor: '#fff1f2', color: '#e11d48' }}>キャンセル</div>
                       </div>
                     ))}
                   </div>

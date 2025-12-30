@@ -41,7 +41,7 @@ export default function VisitHistory({ historyList = [], bookingList = [], user,
     const cancelMembers = bookingForDay?.members?.filter(m => m.status === 'cancel').map(m => ({
         ...m,
         type: 'cancel',
-        menu: '欠席'
+        menu: 'キャンセル'
     })) || [];
 
     const allMembersInDetail = [...visitItem.members, ...cancelMembers];

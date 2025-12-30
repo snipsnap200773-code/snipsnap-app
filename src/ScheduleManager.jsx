@@ -218,11 +218,11 @@ export default function ScheduleManager({
                 
                 {cancelMembers.length > 0 && (
                   <div style={{ ...finishedDayBoxStyle, backgroundColor: '#fff1f2', borderColor: '#fecdd3' }}>
-                    <div style={finishedDayTitleStyle}>🚩 欠席（キャンセル）の方 ({cancelMembers.length}名)</div>
+                    <div style={finishedDayTitleStyle}>🚩 キャンセルの方 ({cancelMembers.length}名)</div>
                     {cancelMembers.map((m, i) => (
                       <div key={i} style={{ ...finishedMemberRowStyle, opacity: 0.7 }}>
                         <span style={{ color: '#e11d48' }}>{m.room} {m.name} 様</span>
-                        <span style={{ ...finishedBadgeStyle, backgroundColor: '#fb7185', color: 'white' }}>欠席</span>
+                        <span style={{ ...finishedBadgeStyle, backgroundColor: '#fb7185', color: 'white' }}>キャンセル</span>
                       </div>
                     ))}
                   </div>
