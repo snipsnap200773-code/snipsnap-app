@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Layout } from './Layout';
 import { supabase } from './supabase'; 
 
@@ -15,14 +15,16 @@ export default function TaskMode({
   colorList = [],
   updateUserNotes 
 }) {
+  // 🌟 スクロール先の目印（Ref）
+  const finishButtonRef = useRef(null);
+
   const getTodayStr = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
   const todayStr = getTodayStr();
   const todaySlash = todayStr.replace(/-/g, '/');
-  const currentMonthKey = todayStr.substring(0, 7);
-
+  
   const [sortBy, setSortBy] = useState("room");
   const [showMenu, setShowMenu] = useState(null); 
   const [showColorPicker, setShowColorPicker] = useState(null);
@@ -30,11 +32,10 @@ export default function TaskMode({
   const [showAddList, setShowAddList] = useState(false); 
   const [addListSortKey, setAddListSortKey] = useState('room');
   const [taskStatus, setTaskStatus] = useState({});
-  
-  // 🌟 通知メッセージ表示用の状態
   const [saveMessage, setSaveMessage] = useState("");
 
-  const todaysBookings = bookingList.filter(b => b.date.replace(/\//g, '-') === todayStr);
+  // 🌟 修正：日付形式のゆらぎを吸収して今日の施設を抽出
+  const todaysBookings = bookingList.filter(b => (b.date || "").replace(/\//g, '-') === todayStr);
   const facilities = Array.from(new Set(todaysBookings.map(b => b.facility)));
   
   useEffect(() => {
@@ -47,12 +48,12 @@ export default function TaskMode({
     if (activeFacility) {
       const initialStatus = {};
       historyList.forEach(h => {
-        if (h.date === todaySlash && h.facility === activeFacility) {
+        if (h.date.replace(/-/g, '/') === todaySlash && h.facility === activeFacility) {
           initialStatus[h.name] = { status: 'done' };
         }
       });
       const todaysBookingData = bookingList.find(b => 
-        b.facility === activeFacility && b.date.replace(/\//g, '-') === todayStr
+        b.facility === activeFacility && (b.date || "").replace(/\//g, '-') === todayStr
       );
       if (todaysBookingData?.members) {
         todaysBookingData.members.forEach(m => {
@@ -63,14 +64,29 @@ export default function TaskMode({
     }
   }, [activeFacility, bookingList, historyList, todaySlash, todayStr]);
 
-  // 🌟 保存ボタン（アラートなしで自動的に戻るように修正）
+  // 🌟【最強機能】100%になったらボタンまでスクロール
+  const doneCount = (todaysBookings.find(b => b.facility === activeFacility)?.members || [])
+    .filter(m => taskStatus[m.name]?.status === 'done').length;
+  const cancelCount = (todaysBookings.find(b => b.facility === activeFacility)?.members || [])
+    .filter(m => taskStatus[m.name]?.status === 'cancel').length;
+  const totalRaw = (todaysBookings.find(b => b.facility === activeFacility)?.members || []).length;
+  const adjustedTotal = totalRaw - cancelCount;
+  const progressPercent = (adjustedTotal > 0) ? Math.round((doneCount / adjustedTotal) * 100) : 0;
+
+  useEffect(() => {
+    if (progressPercent === 100 && adjustedTotal > 0) {
+      setTimeout(() => {
+        finishButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 500); // 完了アニメーションを待ってからスクロール
+    }
+  }, [progressPercent, adjustedTotal]);
+
   const handleFinalSave = async () => {
     try {
-      setSaveMessage("クラウドに保存中..."); // まず保存中であることを出す
-
+      setSaveMessage("クラウドに保存中...");
       await setHistoryList(historyList); 
       const updatedBookingListWithStatus = bookingList.map(b => {
-        const isTarget = b.facility === activeFacility && b.date.replace(/\//g, '-') === todayStr;
+        const isTarget = b.facility === activeFacility && (b.date || "").replace(/\//g, '-') === todayStr;
         if (isTarget) {
           const updatedMembers = b.members.map(m => ({
             ...m,
@@ -81,57 +97,30 @@ export default function TaskMode({
         return b;
       });
       await setBookingList(updatedBookingListWithStatus);
-      
-      // 🌟「保存しました」を表示して、1.2秒後に自動で戻る
       setSaveMessage("クラウドに保存しました！");
-      setTimeout(() => {
-        setPage('admin-top');
-      }, 1200);
-
+      setTimeout(() => { setPage('admin-top'); }, 1200);
     } catch (error) {
       setSaveMessage("保存に失敗しました");
       setTimeout(() => setSaveMessage(""), 3000);
     }
   };
 
-  const facilityMonthBookings = bookingList.filter(b => b.facility === activeFacility && b.date.startsWith(currentMonthKey));
-  const allMonthlyPlannedMembers = [];
-  const seenNames = new Set();
-  facilityMonthBookings.forEach(b => {
-    b.members?.forEach(m => {
-      if (!seenNames.has(m.name)) {
-        allMonthlyPlannedMembers.push(m);
-        seenNames.add(m.name);
-      }
-    });
-  });
-
-  const monthKeySlash = currentMonthKey.replace(/-/g, '/');
-  const finishedInPastDaysNames = historyList
-    .filter(h => h.facility === activeFacility && h.date.startsWith(monthKeySlash) && h.date !== todaySlash)
-    .map(h => h.name);
-
-  let allMembersInTask = allMonthlyPlannedMembers.filter(m => !finishedInPastDaysNames.includes(m.name));
+  const todaysSpecificBooking = bookingList.find(b => b.facility === activeFacility && (b.date || "").replace(/\//g, '-') === todayStr);
+  const allMembersInTask = todaysSpecificBooking?.members || [];
 
   const sortedDisplayMembers = [...allMembersInTask].sort((a, b) => {
     const statusA = taskStatus[a.name]?.status || 'yet';
     const statusB = taskStatus[b.name]?.status || 'yet';
     const weight = { 'yet': 0, 'done': 1, 'cancel': 1 };
     if (weight[statusA] !== weight[statusB]) return weight[statusA] - weight[statusB];
-    if (sortBy === "room") return a.room.toString().localeCompare(b.room.toString(), undefined, { numeric: true });
+    if (sortBy === "room") return String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
     return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
   });
-
-  const doneCount = allMembersInTask.filter(m => taskStatus[m.name]?.status === 'done').length;
-  const cancelCount = allMembersInTask.filter(m => taskStatus[m.name]?.status === 'cancel').length;
-  const totalRaw = allMembersInTask.length;
-  const adjustedTotal = totalRaw - cancelCount;
-  const progressPercent = (adjustedTotal > 0) ? Math.round((doneCount / adjustedTotal) * 100) : (totalRaw > 0 ? 100 : 0);
 
   const handleAddExtra = (m) => {
     const newMember = { ...m, id: `extra-${Date.now()}`, menus: ["カット"], facility: activeFacility, isExtra: true, status: 'yet' };
     const updatedBookingList = bookingList.map(b => {
-      const isTarget = b.facility === activeFacility && b.date.replace(/\//g, '-') === todayStr;
+      const isTarget = b.facility === activeFacility && (b.date || "").replace(/\//g, '-') === todayStr;
       if (isTarget) {
         const alreadyExists = b.members?.some(existing => existing.name === m.name);
         if (alreadyExists) return b;
@@ -175,9 +164,9 @@ export default function TaskMode({
             </div>
           )}
           <div style={statusRowStyle}>
-            <div style={facilityNameBadge}>{activeFacility || "本日の訪問先なし"}</div>
+            <div style={facilityNameBadge}>{activeFacility || "訪問先なし"}</div>
             <div style={progressTextStyle}>
-                {adjustedTotal}名中 / <b style={{color:'#ed32eaff'}}>{doneCount}名 完</b> / 残 {adjustedTotal - doneCount}名
+                {totalRaw}名中 / <b style={{color:'#ed32eaff'}}>{doneCount}名 完</b> / 残 {totalRaw - doneCount - cancelCount}名
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -222,7 +211,16 @@ export default function TaskMode({
           )}
 
           <div style={{ marginTop: '20px', display:'flex', flexDirection:'column', gap:'10px' }}>
-            {progressPercent === 100 && adjustedTotal > 0 && ( <button onClick={() => setPage('task-confirm')} style={finishBtnStyle}>お仕事お疲れさまでした！ ♡</button> )}
+            {/* 🌟 Refをセットして、ここまでスクロールさせる */}
+            {progressPercent === 100 && totalRaw > 0 && ( 
+              <button 
+                ref={finishButtonRef}
+                onClick={() => setPage('task-confirm')} 
+                style={finishBtnStyle}
+              >
+                お仕事お疲れさまでした！ ♡
+              </button> 
+            )}
             <button onClick={handleFinalSave} style={pauseBtnStyle}>今日はここまで (保存して戻る)</button>
           </div>
         </div>
@@ -230,12 +228,9 @@ export default function TaskMode({
 
       <button className="floating-back-btn" onClick={handleFinalSave} style={{ zIndex: 10001, bottom: '20px', left: '20px' }}>←</button>
 
-      {/* 🌟 ふわっと出る通知メッセージ */}
-      {saveMessage && (
-        <div style={toastStyle}>{saveMessage}</div>
-      )}
+      {saveMessage && ( <div style={toastStyle}>{saveMessage}</div> )}
 
-      {/* ポップアップ類（リセット、メニュー、薬剤、追加）は変更なし */}
+      {/* ポップアップ類（中略：変更なし） */}
       {showReset && (
         <div style={overlayStyle} onClick={() => setShowReset(null)}>
           <div style={menuBoxStyle} onClick={e => e.stopPropagation()}>
@@ -310,7 +305,7 @@ export default function TaskMode({
               {users
                 .filter(u => u.facility === activeFacility && !allMembersInTask.some(am => am.name === u.name))
                 .sort((a, b) => {
-                  if (addListSortKey === 'room') return a.room.toString().localeCompare(b.room.toString(), undefined, { numeric: true });
+                  if (addListSortKey === 'room') return String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
                   return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
                 })
                 .map((u, i) => (
@@ -327,16 +322,8 @@ export default function TaskMode({
   );
 }
 
-// 🎨 通知トーストのデザイン
-const toastStyle = {
-  position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-  backgroundColor: 'rgba(30, 58, 138, 0.9)', color: 'white', padding: '16px 32px',
-  borderRadius: '50px', zIndex: 20000, fontWeight: 'bold', fontSize: '17px',
-  boxShadow: '0 10px 25px rgba(0,0,0,0.3)', pointerEvents: 'none',
-  animation: 'fadeInOut 1.2s ease-in-out'
-};
-
-// 🎨 デザイン定数（維持）
+// 🎨 通知トースト・デザイン定数は維持
+const toastStyle = { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', backgroundColor: 'rgba(30, 58, 138, 0.9)', color: 'white', padding: '16px 32px', borderRadius: '50px', zIndex: 20000, fontWeight: 'bold', fontSize: '17px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', pointerEvents: 'none', animation: 'fadeInOut 1.2s ease-in-out' };
 const fixedHeaderWrapperStyle = { position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '1000px', backgroundColor: '#f0f7f4', zIndex: 1000, padding: '8px 15px', boxSizing: 'border-box', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' };
 const statusRowStyle = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', marginBottom: '8px', padding: '4px 0' };
 const facilityNameBadge = { backgroundColor: '#ff8d02ff', color: 'white', padding: '4px 10px', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold' };
