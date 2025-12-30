@@ -23,6 +23,7 @@ import AdminMasterUserList from './AdminMasterUserList';
 import AdminDashboard from './AdminDashboard';
 import PrintUserList from './PrintUserList'; 
 import FacilityInvoice from './FacilityInvoice'; 
+import AdminTodayList from './AdminTodayList';
 
 // 🌟 Supabase接続を一元化
 import { supabase } from './supabase';
@@ -292,7 +293,7 @@ function App() {
       <div style={{ width: '100%', maxWidth: '1000px', display: 'flex', flexDirection: 'column', alignItems: 'stretch', position: 'relative' }}>
         {user.role === 'barber' && (
           <>
-            {currentPageName === 'admin-top' && <AdminMenu setPage={setPage} user={user} />}
+            {currentPageName === 'admin-top' && <AdminMenu setPage={setPage} setActiveFacility={setActiveFacility} dbFacilities={dbFacilities} user={user} />}
             {currentPageName === 'admin-ng' && <ScheduleNG keepDates={keepDates} bookingList={bookingList} ngDates={ngDates} setNgDates={setNgDates} setPage={setPage} checkDateSelectable={checkDateSelectable} />}
             {currentPageName === 'task' && <TaskMode bookingList={bookingList} historyList={historyList} setHistoryList={setHistoryListWithSync} setBookingList={setBookingListWithSync} setPage={setPage} users={users} activeFacility={activeFacility} setActiveFacility={setActiveFacility} menuPrices={menuPrices} colorList={colorList} updateUserNotes={updateUserNotes} />}
             {currentPageName === 'task-confirm' && <TaskConfirmMode historyList={historyList} setPage={setPage} facilityName={activeFacility} user={user} completeFacilityBooking={() => refreshAllData()} />}
@@ -303,6 +304,14 @@ function App() {
             {currentPageName === 'visit-log' && <VisitHistory setPage={setPage} historyList={historyList} bookingList={bookingList} user={user} />}
             {currentPageName === 'admin-history' && <AdminHistory setPage={setPage} historyList={historyList} bookingList={bookingList} />}
             {currentPageName === 'invoice' && <InvoiceManager setPage={setPage} historyList={historyList} />}
+            {currentPageName === 'admin-print-today' && (
+              <AdminTodayList 
+                facilityName={activeFacility} 
+                bookingList={bookingList} 
+                users={users} 
+                setPage={setPage} 
+              />
+            )}
           </>
         )}
         {user.role === 'facility' && (

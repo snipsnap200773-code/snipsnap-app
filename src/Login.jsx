@@ -35,7 +35,7 @@ export default function Login({ onLogin }) {
           <input 
             id="uid" 
             name="username" // 🌟 ブラウザに「ここはIDですよ」と教える
-            autocomplete="username" // 🌟 自動補完を有効にする
+            autoComplete="username" // 🌟 自動補完を有効にする
             placeholder="admin / s1" 
             style={inputStyle} 
             required 
@@ -48,7 +48,7 @@ export default function Login({ onLogin }) {
             id="upw" 
             name="password" // 🌟 ブラウザに「ここはPWですよ」と教える
             type="password" 
-            autocomplete="current-password" // 🌟 パスワード保存を促す
+            autoComplete="current-password" // 🌟 パスワード保存を促す
             placeholder="••••••••" 
             style={inputStyle} 
             required 
