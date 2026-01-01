@@ -23,7 +23,7 @@ export default function FacilityConfirmBooking_PC({
       const sorted = [...keepDates].sort((a, b) => {
         const dateA = typeof a === 'string' ? a : a.date;
         const dateB = typeof b === 'string' ? b : b.date;
-        return dateA.localeCompare(dateB);
+        return (dateA || "").localeCompare(dateB || "");
       });
       const firstDate = typeof sorted[0] === 'string' ? sorted[0] : sorted[0].date;
       return new Date(firstDate);
@@ -52,7 +52,7 @@ export default function FacilityConfirmBooking_PC({
 
   const currentMonthKey = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth() + 1).padStart(2, '0')}`;
 
-  // 🌟【最重要：根本修正】どんなデータ形式が来ても「文字列の配列」に変換する
+  // 🌟【最重要修正】どんなデータ形式が来ても「文字列の配列」に変換し、replaceエラーを防ぐ
   const visibleDates = keepDates
     .filter(d => {
       const dateStr = typeof d === 'string' ? d : d?.date;
@@ -73,6 +73,7 @@ export default function FacilityConfirmBooking_PC({
     else { setSortKey(key); setSortOrder('asc'); }
   };
 
+  // 選択・解除ロジック（左側のスクロールも制御）
   const toggleUserSelection = (u, index = null) => {
     const isAdded = selectedMembers.find(m => m.id === u.id);
     if (isAdded) {
@@ -80,6 +81,7 @@ export default function FacilityConfirmBooking_PC({
     } else {
       setSelectedMembers([...selectedMembers, { ...u, menus: ['カット'] }]);
       
+      // 左側の自動スクロール
       if (index !== null && leftListRef.current) {
         const nextElement = leftListRef.current.children[index + 1];
         if (nextElement) {
@@ -105,6 +107,7 @@ export default function FacilityConfirmBooking_PC({
         <div>
           <h2 style={{margin:0, color: '#2d6a4f'}}>✅ これで決まり！予約確定！</h2>
           <div style={activeMonthBoxStyle}>
+            {/* 🌟 ここで map 処理の replace が安全に行われます */}
             訪問予定日：{visibleDates.length > 0 ? visibleDates.map(d => d.replace(/-/g, '/')).join(' ・ ') : "キープ枠なし"}
           </div>
         </div>
@@ -116,6 +119,7 @@ export default function FacilityConfirmBooking_PC({
       </header>
 
       <div style={twoColumnLayout}>
+        {/* 左側：名簿 */}
         <section style={leftScrollSide}>
           <div style={stickySubHeader}>
             <div style={{fontWeight:'bold', color:'#666', fontSize:'14px'}}>1. 施術を受ける方を選んでください</div>
@@ -145,6 +149,7 @@ export default function FacilityConfirmBooking_PC({
           </div>
         </section>
 
+        {/* 右側：メニュー確認 */}
         <section style={rightScrollSide}>
           <div style={stickySubHeader}>
             <div style={{fontWeight:'bold', color:'#2d6a4f', fontSize:'14px'}}>2. 選んだ人のメニューを確認</div>
@@ -181,8 +186,9 @@ export default function FacilityConfirmBooking_PC({
 
       <footer style={pcFooterStyle}>
         <div style={{fontSize:'18px', color: '#2d6a4f'}}>合計 <strong>{selectedMembers.length}</strong> 名の予約を確定します</div>
-        <button disabled={selectedMembers.length === 0 || visibleDates.length === 0} onClick={() => setPage('timeselect')}
-          style={{ ...pcConfirmBtn, backgroundColor: (selectedMembers.length === 0 || visibleDates.length === 0) ? '#ccc' : '#2d6a4f' }}>
+        {/* 🌟【重要】disabled 判定も修正しました */}
+        <button disabled={selectedMembers.length === 0 || !visibleDates || visibleDates.length === 0} onClick={() => setPage('timeselect')}
+          style={{ ...pcConfirmBtn, backgroundColor: (selectedMembers.length === 0 || !visibleDates || visibleDates.length === 0) ? '#ccc' : '#2d6a4f' }}>
           開始時間を選択する ➔
         </button>
       </footer>
