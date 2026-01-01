@@ -3,8 +3,8 @@ import AdminMasterUserList_PC from './AdminMasterUserList_PC';
 import AdminHistory_PC from './AdminHistory_PC';
 import InvoiceManager_PC from './InvoiceManager_PC';
 import AdminDashboard_PC from './AdminDashboard_PC';
-import AdminScheduleNG_PC from './AdminScheduleNG_PC'; // 🌟 追加（カレンダー×用）
-import AdminScheduleManager_PC from './AdminScheduleManager_PC'; // 🌟 追加（進捗リスト用）
+import AdminScheduleNG_PC from './AdminScheduleNG_PC'; 
+import AdminScheduleManager_PC from './AdminScheduleManager_PC'; 
 import AdminTodayList_PC from './AdminTodayList_PC';
 import AdminFacilityList_PC from './AdminFacilityList_PC';
 import TaskMode_PC from './TaskMode_PC';
@@ -17,15 +17,18 @@ export default function AdminMenu_PC({
   setUsers, 
   dbFacilities = [], 
   historyList = [], 
+  setHistoryList, 
   bookingList = [],
-  keepDates = [], // 🌟 追加
-  setKeepDates, // 🌟 追加
-  setBookingList, // 🌟 追加
+  keepDates = [], 
+  setKeepDates, 
+  setBookingList, 
   ngDates = [],
   setNgDates,
-  checkDateSelectable, // 🌟 追加
+  checkDateSelectable, 
   setActiveFacility, 
-  activeFacility     
+  activeFacility,
+  updateUserNotes,
+  colorList = [] // 🌟【修正】App.jsx から薬剤リストを受け取る
 }) {
   const [activeTab, setActiveTab] = useState('dashboard');
 
@@ -38,7 +41,6 @@ export default function AdminMenu_PC({
 
   return (
     <div style={pcLayoutStyle}>
-      {/* --- 左側：サイドバーメニュー --- */}
       <aside style={sidebarStyle}>
         <div style={sidebarHeader}>
           <h2 style={sidebarTitleStyle}>
@@ -53,7 +55,6 @@ export default function AdminMenu_PC({
             <span style={iconStyle}>📊</span> 売上状況
           </button>
 
-          {/* 🌟 予約管理を2つの役割に分離 */}
           <div style={sectionLabelStyle}>スケジュール管理</div>
           <button onClick={() => setActiveTab('calendar-ng')} style={getNavBtnStyle('calendar-ng')}>
             <span style={iconStyle}>📅</span> 予約受付・NG設定
@@ -90,14 +91,12 @@ export default function AdminMenu_PC({
         </div>
       </aside>
 
-      {/* --- 右側：メインコンテンツ --- */}
       <main style={mainContentStyle}>
         <div style={contentInnerStyle}>
           {activeTab === 'dashboard' && (
             <AdminDashboard_PC historyList={historyList} dbFacilities={dbFacilities} users={users} />
           )}
 
-          {/* 🌟 カレンダー形式（休み×をつける） */}
           {activeTab === 'calendar-ng' && (
             <AdminScheduleNG_PC 
               bookingList={bookingList} 
@@ -109,7 +108,6 @@ export default function AdminMenu_PC({
             />
           )}
 
-          {/* 🌟 リスト形式（進捗確認・一括終了処理） */}
           {activeTab === 'schedule-manager' && (
             <AdminScheduleManager_PC 
               bookingList={bookingList} 
@@ -121,8 +119,26 @@ export default function AdminMenu_PC({
             />
           )}
 
+          {/* 🌟【ここを修正】TaskMode_PC へ colorList を渡す！ */}
           {activeTab === 'task-input' && (
-            <TaskMode_PC bookingList={bookingList} setPage={setPage} setActiveFacility={setActiveFacility} activeFacility={activeFacility} />
+            <TaskMode_PC 
+              bookingList={bookingList} 
+              historyList={historyList}
+              setHistoryList={setHistoryList}
+              setBookingList={setBookingList}
+              setPage={setPage} 
+              setActiveTab={setActiveTab}
+              users={users}
+              activeFacility={activeFacility} 
+              setActiveFacility={setActiveFacility} 
+              updateUserNotes={updateUserNotes}
+              colorList={colorList} // 🌟【追加】これで薬剤一覧が出ます！
+              menuPrices={{ // 🌟【追加】価格計算に必要
+                'カット': 1600, 'カラー（リタッチ）': 4600, 'カラー（全体）': 5600, 'パーマ': 4600,
+                'カット＋カラー（リタッチ）': 6100, 'カット＋カラー（全体）': 7100, 'カット＋パーマ': 6100,
+                'カット＋カラー（リタッチ）＋パーマ': 11600, 'カット＋カラー（全体）＋パーマ': 11600, 'カラー': 5600
+              }}
+            />
           )}
 
           {activeTab === 'print-list' && (
@@ -146,7 +162,12 @@ export default function AdminMenu_PC({
           )}
 
           {activeTab === 'task-confirm-view' && (
-            <TaskConfirmMode_PC activeFacility={activeFacility} setPage={() => setActiveTab('task-input')} />
+            <TaskConfirmMode_PC 
+              activeFacility={activeFacility} 
+              setPage={() => setActiveTab('task-input')}
+              historyList={historyList}
+              bookingList={bookingList}
+            />
           )}
         </div>
       </main>

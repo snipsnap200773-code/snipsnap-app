@@ -4,7 +4,7 @@ import { supabase } from '../../supabase';
 export default function TaskMode_PC({ 
   bookingList = [], 
   historyList = [], 
-  setHistoryList, 
+  setHistoryList, // 🌟 AdminMenu_PCから正しく受け取る
   setBookingList, 
   setPage, 
   users = [],
@@ -15,6 +15,7 @@ export default function TaskMode_PC({
   updateUserNotes 
 }) {
   const finishButtonRef = useRef(null);
+  
   const getTodayStr = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -30,7 +31,7 @@ export default function TaskMode_PC({
   const [addListSortKey, setAddListSortKey] = useState('room');
   const [saveMessage, setSaveMessage] = useState("");
 
-  // 今日の施設リスト（サイドバーと連動するタブ用）
+  // 今日の施設リスト（タブ用）
   const facilities = Array.from(new Set(
     bookingList
       .filter(b => (b.date || "").replace(/\//g, '-') === todayStr)
@@ -58,31 +59,39 @@ export default function TaskMode_PC({
   const totalRaw = allMembersInTask.length;
   const isFinishedAll = totalRaw > 0 && (doneCount + cancelCount === totalRaw);
 
-  // クラウド保存
+  // 🌟【重要】クラウド保存ロジック（モバイル版に準拠）
   const handleFinalSave = async () => {
     try {
-      setSaveMessage("保存中...");
+      setSaveMessage("クラウドに保存中...");
       if (currentBooking) {
-        const { error } = await supabase.from('bookings').upsert(currentBooking);
+        const { error } = await supabase.from('bookings').upsert(currentBooking, { onConflict: 'id' });
         if (error) throw error;
       }
       setSaveMessage("クラウドに保存しました！");
       setTimeout(() => setSaveMessage(""), 2000);
     } catch (error) {
-      alert("保存に失敗しました");
+      setSaveMessage("保存に失敗しました");
+      setTimeout(() => setSaveMessage(""), 3000);
     }
   };
 
-  // 完了処理
+  // 🌟【最重要】完了処理（setHistoryList を確実に実行）
   const completeTask = (m, finalMenu, colorNum = "") => {
+    if (typeof setHistoryList !== 'function') {
+      console.error("setHistoryListが関数ではありません。リレーを確認してください。");
+      return;
+    }
+
     const price = menuPrices[finalMenu] || 0;
     const menuName = finalMenu + (colorNum ? ` ${colorNum}` : "");
 
+    // 1. 履歴を追加
     setHistoryList(prev => [...prev, {
       date: todaySlash, facility: activeFacility, room: m.room, 
       name: m.name, kana: m.kana, menu: menuName, price: price, status: 'done'
     }]);
 
+    // 2. 予約リストのステータスを更新
     const updatedMembers = allMembersInTask.map(member => 
       member.name === m.name ? { ...member, status: 'done' } : member
     );
@@ -90,7 +99,9 @@ export default function TaskMode_PC({
       b.id === currentBooking.id ? { ...b, members: updatedMembers } : b
     ));
 
-    if (colorNum) updateUserNotes(m.name, activeFacility, menuName);
+    if (colorNum && typeof updateUserNotes === 'function') {
+      updateUserNotes(m.name, activeFacility, menuName);
+    }
     setShowMenu(null); setShowColorPicker(null);
   };
 
@@ -119,7 +130,7 @@ export default function TaskMode_PC({
 
   // 当日追加
   const handleAddExtra = (m) => {
-    const newMember = { ...m, menus: ["カット"], isExtra: true, status: 'yet' };
+    const newMember = { ...m, id: `extra-${Date.now()}`, menus: ["カット"], isExtra: true, status: 'yet', facility: activeFacility };
     setBookingList(prev => prev.map(b => {
       if (b.id === currentBooking.id) {
         if (b.members?.some(ex => ex.name === m.name)) return b;
@@ -131,24 +142,32 @@ export default function TaskMode_PC({
   };
 
   const sortedDisplayMembers = [...allMembersInTask].sort((a, b) => {
-    const statusA = historyList.some(h => h.name === a.name && h.date === todaySlash) ? 'done' : (a.status || 'yet');
-    const statusB = historyList.some(h => h.name === b.name && h.date === todaySlash) ? 'done' : (b.status || 'yet');
+    const isDoneA = historyList.some(h => h.name === a.name && h.date === todaySlash);
+    const isDoneB = historyList.some(h => h.name === b.name && h.date === todaySlash);
+    const statusA = isDoneA ? 'done' : (a.status || 'yet');
+    const statusB = isDoneB ? 'done' : (b.status || 'yet');
+    
     const weight = { 'yet': 0, 'done': 1, 'cancel': 1 };
     if (weight[statusA] !== weight[statusB]) return weight[statusA] - weight[statusB];
     if (sortBy === "room") return String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
     return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
   });
 
+  const getMenuOptions = (m) => {
+    const originalMenu = (m.menus || ["カット"]).join('＋');
+    if (!originalMenu.includes("カラー")) return [originalMenu];
+    return [originalMenu.replace("カラー", "カラー（リタッチ）"), originalMenu.replace("カラー", "カラー（全体）")];
+  };
+
   return (
     <div style={containerStyle}>
-      {/* --- 上部：ステータス＆コントロールパネル --- */}
       <div style={headerPanelStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
           <h2 style={{ margin: 0, color: '#1e3a8a' }}>✂️ 今日のタスク入力</h2>
           <div style={progressContainer}>
-            <span style={progressLabel}>全体の進捗:</span>
+            <span style={progressLabel}>現在の進捗:</span>
             <span style={progressValue}>{doneCount} / {totalRaw} 名 完了</span>
-            <div style={progressBarBg}><div style={{...progressBarFill, width: `${(doneCount/totalRaw)*100}%`}}></div></div>
+            <div style={progressBarBg}><div style={{...progressBarFill, width: totalRaw > 0 ? `${(doneCount/totalRaw)*100}%` : '0%'}}></div></div>
           </div>
         </div>
 
@@ -162,15 +181,14 @@ export default function TaskMode_PC({
             ))}
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => setSortBy('room')} style={{...sortBtn, border: sortBy==='room'?'2px solid #1e3a8a':'1px solid #cbd5e1'}}>部屋順</button>
-            <button onClick={() => setSortBy('name')} style={{...sortBtn, border: sortBy==='name'?'2px solid #1e3a8a':'1px solid #cbd5e1'}}>名前順</button>
+            <button onClick={() => setSortBy('room')} style={{...sortBtn, border: sortBy==='room'?'2px solid #1e3a8a':'1px solid #cbd5e1', fontWeight: sortBy==='room'?'bold':'normal'}}>部屋順</button>
+            <button onClick={() => setSortBy('name')} style={{...sortBtn, border: sortBy==='name'?'2px solid #1e3a8a':'1px solid #cbd5e1', fontWeight: sortBy==='name'?'bold':'normal'}}>名前順</button>
             <button onClick={() => setShowAddList(true)} style={addBtn}>＋ 当日追加</button>
             <button onClick={handleFinalSave} style={saveBtn}>保存</button>
           </div>
         </div>
       </div>
 
-      {/* --- メインリスト --- */}
       <div style={listAreaStyle}>
         {allMembersInTask.length > 0 ? (
           <div style={gridContainer}>
@@ -185,11 +203,11 @@ export default function TaskMode_PC({
                     opacity: (isDone || isCancel) ? 0.7 : 1 
                   }}>
                   <div style={cardTopStyle}>
-                    <span style={roomNumStyle}>{m.room}</span>
+                    <span style={roomNumStyle}>{m.room}号室</span>
                     <span style={badgeStyle(isDone, isCancel)}>{isCancel ? '取消' : (isDone ? '完了' : '待機中')}</span>
                   </div>
                   <div style={nameStyle}>{m.name} 様</div>
-                  <div style={menuSummaryStyle}>{(m.menus || ["カット"]).join(' + ')}</div>
+                  <div style={menuSummaryStyle}>{(m.menus || ["カット"]).join(' + ')} {m.isExtra && "★当日"}</div>
                   {!isDone && !isCancel && (
                     <button onClick={(e) => {e.stopPropagation(); handleCancelMember(m.name)}} style={inlineCancelBtn}>キャンセル</button>
                   )}
@@ -201,7 +219,7 @@ export default function TaskMode_PC({
           <div style={emptyStateStyle}>本日予定されている予約はありません</div>
         )}
 
-        {isFinishedAll && ( 
+        {isFinishedAll && totalRaw > 0 && ( 
           <button onClick={() => setPage('task-confirm-view')} style={finishBtn}>
             ✨ 本日の業務をすべて完了しました！ (確認画面へ)
           </button> 
@@ -210,16 +228,13 @@ export default function TaskMode_PC({
 
       {saveMessage && <div style={toastStyle}>{saveMessage}</div>}
 
-      {/* モーダル類（スマホ版のロジックをそのまま流用） */}
+      {/* モーダル：メニュー選択 */}
       {showMenu && (
         <div style={overlayStyle} onClick={() => setShowMenu(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
-            <h3 style={{marginTop:0}}>{showMenu.name} 様</h3>
+            <h3 style={{marginTop:0, color:'#1e3a8a'}}>{showMenu.name} 様</h3>
             <div style={modalBtnGroup}>
-              {((showMenu.menus || ["カット"]).join('＋').includes("カラー") 
-                ? [ (showMenu.menus || ["カット"]).join('＋').replace("カラー", "カラー（リタッチ）"), (showMenu.menus || ["カット"]).join('＋').replace("カラー", "カラー（全体）") ]
-                : [(showMenu.menus || ["カット"]).join('＋')]
-              ).map(opt => (
+              {getMenuOptions(showMenu).map(opt => (
                 <button key={opt} onClick={() => opt.includes("カラー") ? (setShowColorPicker({ member: showMenu, menu: opt }), setShowMenu(null)) : completeTask(showMenu, opt)}
                   style={modalMainBtn}>✅ {opt} 完了</button>
               ))}
@@ -229,11 +244,12 @@ export default function TaskMode_PC({
         </div>
       )}
 
-      {/* カラー選択・リセット・追加リストのモーダルも同様に実装... */}
+      {/* モーダル：カラー選択 */}
       {showColorPicker && (
         <div style={overlayStyle} onClick={() => setShowColorPicker(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
-            <h3>{showColorPicker.member.name} 様 - 色選択</h3>
+            <h3 style={{color:'#1e3a8a'}}>{showColorPicker.member.name} 様</h3>
+            <p style={{fontSize:'14px', color:'#64748b'}}>{showColorPicker.menu} の薬剤を選択</p>
             <div style={colorGrid}>
               {colorList.map(c => <button key={c} onClick={() => completeTask(showColorPicker.member, showColorPicker.menu, c)} style={colorBtn}>{c}</button>)}
             </div>
@@ -242,10 +258,11 @@ export default function TaskMode_PC({
         </div>
       )}
 
+      {/* モーダル：リセット（戻す） */}
       {showReset && (
         <div style={overlayStyle} onClick={() => setShowReset(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
-            <h3>ステータス変更</h3>
+            <h3 style={{color:'#1e3a8a'}}>ステータス変更</h3>
             <p>{showReset.name} 様を未完了に戻しますか？</p>
             <button onClick={() => handleResetMember(showReset)} style={modalResetBtn}>未完了に戻す</button>
             <button onClick={() => setShowReset(null)} style={modalCloseBtn}>閉じる</button>
@@ -253,16 +270,17 @@ export default function TaskMode_PC({
         </div>
       )}
 
+      {/* モーダル：当日追加 */}
       {showAddList && (
         <div style={overlayStyle} onClick={() => setShowAddList(false)}>
           <div style={{...modalStyle, width: '600px', maxHeight: '80vh', overflowY: 'auto'}}>
-            <h3 style={{position:'sticky', top:0, background:'white', padding:'10px 0'}}>当日追加を選択</h3>
+            <h3 style={{position:'sticky', top:0, background:'white', padding:'10px 0', zIndex:1, color:'#1e3a8a'}}>当日追加を選択</h3>
             <div style={addListGrid}>
               {users.filter(u => u.facility === activeFacility && !allMembersInTask.some(am => am.name === u.name))
                 .sort((a,b) => String(a.room).localeCompare(String(b.room), undefined, {numeric:true}))
                 .map((u, i) => (
                   <div key={i} onClick={() => handleAddExtra(u)} style={addRowStyle}>
-                    <span>{u.room} {u.name} 様</span>
+                    <span>{u.room}号室 {u.name} 様</span>
                     <span style={addIcon}>＋</span>
                   </div>
               ))}

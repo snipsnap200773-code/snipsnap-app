@@ -303,26 +303,32 @@ function App() {
       }}>
         {user.role === 'barber' && (
           isPC ? (
-            <AdminMenu_PC 
-              page={page} // 🌟 現在のページを渡す
-              setPage={setPage} 
-              setActiveFacility={setActiveFacility}
-              activeFacility={activeFacility}
-              dbFacilities={dbFacilities} 
-              user={user} 
-              users={users} 
-              setUsers={setUsers}
-              historyList={historyList}
-              bookingList={bookingList}
-              ngDates={ngDates}
-              setNgDates={setNgDatesWithSync}
-              // 🌟 PC版Adminでもリセットを防ぐために必要なProps
-              keepDates={keepDates}
-              setKeepDates={setManualKeepDatesWithSync}
-              setBookingList={setBookingListWithSync}
-              checkDateSelectable={checkDateSelectable}
-            />
-          ) : (
+<AdminMenu_PC 
+  page={page} 
+  setPage={setPage} 
+  setActiveFacility={setActiveFacility}
+  activeFacility={activeFacility}
+  dbFacilities={dbFacilities} 
+  user={user} 
+  users={users} 
+  setUsers={setUsers}
+  historyList={historyList}
+  
+  // 🌟 ここに薬剤リストを追加！
+  colorList={colorList} 
+  
+  setHistoryList={setHistoryListWithSync} 
+  bookingList={bookingList}
+  setBookingList={setBookingListWithSync}
+  
+  ngDates={ngDates}
+  setNgDates={setNgDatesWithSync}
+  keepDates={keepDates}
+  setKeepDates={setManualKeepDatesWithSync}
+  checkDateSelectable={checkDateSelectable}
+  updateUserNotes={updateUserNotes}
+/>
+            ) : (
             <div className="mobile-view-container" style={{width:'100%'}}>
               {currentPageName === 'admin-top' && <AdminMenu setPage={setPage} setActiveFacility={setActiveFacility} dbFacilities={dbFacilities} user={user} />}
               {currentPageName === 'admin-ng' && <ScheduleNG keepDates={keepDates} bookingList={bookingList} ngDates={ngDates} setNgDates={setNgDates} setPage={setPage} checkDateSelectable={checkDateSelectable} />}
