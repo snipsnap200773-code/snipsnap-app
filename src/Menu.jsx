@@ -21,11 +21,10 @@ export default function Menu({ setPage, user }) {
     { title: 'あつまれ綺麗にしたい人', sub: '（名簿管理）', color: '#76c893', action: () => setPage('list') },
     { title: 'キープ！この日とった！', sub: '（訪問日先取り）', color: '#b5e48c', action: () => setPage('keep-date') },
     { title: 'これで決まり！予約確定！', sub: '（キープから予約へ）', color: '#52b69a', action: () => setPage('confirm') },
-    { title: '予約の確認と編集', sub: '（追加・取消）', color: '#34a0a4', action: () => setPage('schedule') },
+    { title: '予約の状況・進捗', sub: '（予約確定日と状況）', color: '#34a0a4', action: () => setPage('schedule') },
     { title: '過去の訪問記録', sub: '（あの頃君は…）', color: '#1a759f', action: () => setPage('history') },
-    { title: '施設情報の確認', sub: '（プロフィール）', color: '#1e6091', action: () => setPage('info') },
     { title: '掲示用名簿をプリント', sub: '（フロア貼り出し用）', color: '#f59e0b', action: () => setPage('print-list') },
-    // 🌟 施設側用の請求・領収書発行ボタンを新設
+    // 🌟 請求・領収書発行を最後に配置
     { title: '請求・領収書発行', sub: '（履歴から書類作成）', color: '#d946ef', action: () => setPage('facility-invoice') },
   ];
 

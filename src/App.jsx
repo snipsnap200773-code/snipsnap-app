@@ -120,22 +120,22 @@ function App() {
   }, [user]);
 
   // 🌟【最重要修正：同期関数】
-  // finishTime等の余計な列を削除し、保存後に即座に再読み込み(refresh)をかけて並び替えを反映させます
+  // モバイル版の「完了時に下に移動する」動きを復活させ、PC版のエラーを防ぐために日付をスラッシュに統一します
   const setHistoryListWithSync = async (updateArg) => {
     const newList = typeof updateArg === 'function' ? updateArg(historyList) : updateArg;
     setHistoryList(newList);
 
     if (newList.length > 0) {
-      // Supabaseに存在しない列（finishTime, id, created_at）を除外して送る
-      const dataToSync = newList.map(item => {
-        const { id, created_at, finishTime, ...cleanData } = item;
-        return cleanData;
-      });
+      // 🌟 DB送信前に：余計な列(finishTime等)を消し、日付を「スラッシュ」に強制変換してモバイル版のルールに統一
+      const dataToSync = newList.map(({ id, created_at, finishTime, ...rest }) => ({
+        ...rest,
+        date: (rest.date || "").replace(/-/g, '/') 
+      }));
       
       const { error } = await supabase.from('history').upsert(dataToSync, { onConflict: 'date,facility,name' });
       
       if (!error) {
-        // 保存成功後、最新データを取得。これで「完了した人が下（または指定順）」に即座に並び替わります
+        // 🌟 保存後に再読み込みをかけることで、モバイル版の「完了した人が下に行く」並び替えを確実に実行させます
         refreshAllData();
       } else {
         console.error("Supabase Sync Error:", error.message);

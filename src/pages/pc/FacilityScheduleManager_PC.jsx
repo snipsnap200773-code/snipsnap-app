@@ -12,9 +12,14 @@ export default function FacilityScheduleManager_PC({
 
   const todayStr = new Date().toLocaleDateString('sv-SE'); 
 
-  // --- スマホ版共通ロジック ---
+  // --- 共通ロジック ---
   const changeViewMonth = (offset) => {
     setCurrentViewDate(new Date(currentViewDate.getFullYear(), currentViewDate.getMonth() + offset, 1));
+  };
+
+  const getDayName = (dateStr) => {
+    const days = ['日', '月', '火', '水', '木', '金', '土'];
+    return days[new Date(dateStr.replace(/\//g, '-')).getDay()];
   };
 
   const myKeeps = keepDates.filter(kd => kd.facility === user.name).map(kd => ({ date: kd.date, confirmed: false, members: [] }));
@@ -24,11 +29,7 @@ export default function FacilityScheduleManager_PC({
   const currentMonthKey = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth() + 1).padStart(2, '0')}`;
   const visibleItems = allDates.filter(item => item.date.startsWith(currentMonthKey));
 
-  const formatShortDate = (d) => {
-    const days = ['日', '月', '火', '水', '木', '金', '土'];
-    const dateObj = new Date(d.replace(/\//g, '-'));
-    return `${d.replace(/-/g, '/')}(${days[dateObj.getDay()]})`;
-  };
+  const formatShortDate = (d) => `${d.replace(/-/g, '/')}(${getDayName(d)})`;
 
   // --- 進捗計算ロジック（スマホ版完全再現） ---
   const monthKeySlash = currentMonthKey.replace(/-/g, '/');
@@ -129,48 +130,141 @@ export default function FacilityScheduleManager_PC({
         )}
       </div>
 
-      {/* --- 詳細モーダル（スマホ版のロジックとデザインをPC最適化） --- */}
-      {selectedDetail && (
-        <div style={modalOverlay} onClick={() => setSelectedDetail(null)}>
-          <div style={modalContent} onClick={e => e.stopPropagation()}>
-            <div style={modalHeader}>
-              <h3>施術状況詳細 ({formatShortDate(selectedDetail.date)})</h3>
-              <button onClick={() => setSelectedDetail(null)} style={closeBtn}>×</button>
-            </div>
-            
-            <div style={modalScrollArea}>
-               {/* モーダル内の中身（進捗リスト等）はスマホ版のロジックで表示 */}
-               <p style={{fontSize:'13px', color:'#64748b'}}>※完了およびキャンセル以外の、本日の施術予定者を表示しています。</p>
-               {/* 簡略化のため、ここにはスマホ版のdoneMembers等のリストが表示される想定 */}
-               <div style={{padding:'20px', textAlign:'center', color:'#94a3b8'}}>
-                 詳細名簿を表示中... (スマホ版のリストロジックをここに適用)
-               </div>
+      {/* 🌟 施術状況詳細モーダル（スマホ版ロジック完全移植） */}
+      {selectedDetail && (() => {
+        const { date, members: plannedMembers, allPlannedInMonth } = selectedDetail;
+        const monthKey = date.substring(0, 7);
+        const dateSlash = date.replace(/-/g, '/');
+
+        const monthHistory = historyList.filter(h => 
+          h.date.startsWith(monthKey.replace(/-/g, '/')) && h.facility === user.name
+        );
+        
+        const finishedBeforeTodayNames = monthHistory.filter(h => h.date < dateSlash).map(h => h.name);
+        const finishedOnDay = monthHistory.filter(h => h.date === dateSlash);
+        const finishedOnDayNames = finishedOnDay.map(h => h.name);
+
+        const allExtraInMonth = monthHistory
+          .filter(h => !allPlannedInMonth.some(m => m.name === h.name))
+          .map(h => ({ name: h.name, room: h.room, kana: h.kana, isExtra: true, menus: [h.menu], status: 'done' }));
+
+        const candidates = [...plannedMembers, ...allExtraInMonth].filter((m, i, self) => 
+          self.findIndex(t => t.name === m.name) === i && !finishedBeforeTodayNames.includes(m.name)
+        );
+
+        const doneMembers = candidates.filter(m => finishedOnDayNames.includes(m.name)).map(m => {
+          const h = finishedOnDay.find(fh => fh.name === m.name);
+          return { ...m, menu: h.menu, status: 'done' };
+        });
+        const cancelMembers = candidates.filter(m => m.status === 'cancel' && !doneMembers.some(d => d.name === m.name));
+        const remainingMembers = candidates.filter(m => !finishedOnDayNames.includes(m.name) && m.status !== 'cancel');
+
+        const sortFn = (list) => [...list].sort((a, b) => {
+          if (popupSortKey === 'room') return a.room.toString().localeCompare(b.room.toString(), undefined, { numeric: true });
+          return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
+        });
+
+        return (
+          <div style={modalOverlay} onClick={() => setSelectedDetail(null)}>
+            <div style={modalContent} onClick={e => e.stopPropagation()}>
+              <div style={modalHeader}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '20px', color: '#1e3a8a' }}>施術状況詳細</h3>
+                  <p style={{ fontSize: '14px', color: '#64748b', margin: '4px 0 0' }}>🏠 {user.name} / {date.replace(/-/g, '/')}</p>
+                </div>
+                <button onClick={() => setSelectedDetail(null)} style={closeBtn}>×</button>
+              </div>
+              
+              <div style={modalScrollArea}>
+                {/* 1. 完了リスト */}
+                {doneMembers.length > 0 && (
+                  <div style={finishedDayBoxStyle}>
+                    <div style={finishedDayTitleStyle}>✅ 本日終了した方 ({doneMembers.length}名)</div>
+                    {sortFn(doneMembers).map((m, i) => (
+                      <div key={i} style={finishedMemberRowStyle}>
+                        <span>{m.room} {m.name} 様 {m.isExtra && <span style={extraBadgeStyle}>当日追加</span>}</span>
+                        <span style={finishedBadgeStyle}>{m.menu || '完了'}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* 2. キャンセルリスト */}
+                {cancelMembers.length > 0 && (
+                  <div style={{ ...finishedDayBoxStyle, backgroundColor: '#fff1f2', borderColor: '#fecdd3' }}>
+                    <div style={{...finishedDayTitleStyle, color: '#e11d48'}}>🚩 キャンセルの方 ({cancelMembers.length}名)</div>
+                    {sortFn(cancelMembers).map((m, i) => (
+                      <div key={i} style={{ ...finishedMemberRowStyle, opacity: 0.7 }}>
+                        <span style={{ color: '#e11d48' }}>{m.room} {m.name} 様</span>
+                        <span style={{ ...finishedBadgeStyle, backgroundColor: '#fb7185', color: 'white' }}>欠席</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 3. 未完了リスト */}
+                <div style={remainingBoxStyle}>
+                  <div style={remainingHeaderStyle}>
+                    <span>⏳ 未完了の方 ({remainingMembers.length}名)</span>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => setPopupSortKey('room')} style={{ ...miniSortBtnStyle, backgroundColor: popupSortKey === 'room' ? '#2d6a4f' : 'white', color: popupSortKey === 'room' ? 'white' : '#2d6a4f' }}>部屋順</button>
+                      <button onClick={() => setPopupSortKey('name')} style={{ ...miniSortBtnStyle, backgroundColor: popupSortKey === 'name' ? '#2d6a4f' : 'white', color: popupSortKey === 'name' ? 'white' : '#2d6a4f' }}>名前順</button>
+                    </div>
+                  </div>
+                  {remainingMembers.length === 0 ? (
+                    <p style={allDoneTextStyle}>🎉 全員の施術が完了しました！</p>
+                  ) : (
+                    sortFn(remainingMembers).map((m, i) => (
+                      <div key={i} style={remainingMemberRowStyle}>
+                        <span>{m.room} <b>{m.name} 様</b> {m.isExtra && <span style={extraBadgeStyle}>当日追加</span>}</span>
+                        <div style={{display:'flex', gap:'4px'}}>{m.menus?.map(menu => <span key={menu} style={menuBadgeStyle}>{menu}</span>)}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setSelectedDetail(null)} style={bottomCloseBtnStyle}>閉じる</button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
 
-// 🎨 PC版スタイル
+// 🎨 スタイル定義（スマホ版のデザインをPC用にスケールアップ）
 const containerStyle = { display: 'flex', flexDirection: 'column', height: '100%', gap: '20px' };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px' };
 const monthNavStyle = { display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: 'white', padding: '10px 20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' };
 const monthLabel = { fontSize: '18px', fontWeight: 'bold' };
 const navBtn = { padding: '5px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer' };
 const noticeStyle = { padding: '12px', backgroundColor: '#fef2f2', border: '1px solid #fee2e2', color: '#dc2626', borderRadius: '10px', fontSize: '13px', fontWeight: 'bold', textAlign: 'center' };
-const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px', overflowY: 'auto' };
-const statusCardStyle = { padding: '20px', borderRadius: '20px', display: 'flex', flexDirection: 'column', gap: '15px', transition: '0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' };
+const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px', overflowY: 'auto' };
+const statusCardStyle = { padding: '20px', borderRadius: '24px', display: 'flex', flexDirection: 'column', gap: '15px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', border: '1px solid #e2e8f0' };
 const cardHeader = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
-const todayBadge = { backgroundColor: '#f59e0b', color: 'white', fontSize: '10px', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' };
+const todayBadge = { backgroundColor: '#f59e0b', color: 'white', fontSize: '11px', padding: '2px 10px', borderRadius: '12px', fontWeight: 'bold' };
 const cardContent = { flex: 1 };
-const progressBarContainer = { height: '8px', backgroundColor: '#f1f5f9', borderRadius: '4px', marginTop: '10px', overflow: 'hidden' };
+const progressBarContainer = { height: '8px', backgroundColor: '#f1f5f9', borderRadius: '4px', marginTop: '12px', overflow: 'hidden' };
 const progressBar = { height: '100%', transition: '0.5s' };
-const detailBtn = { padding: '10px', backgroundColor: '#1e3a8a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' };
+const detailBtn = { padding: '12px', backgroundColor: '#1e3a8a', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' };
 const emptyStyle = { gridColumn: '1/-1', textAlign: 'center', padding: '100px', color: '#94a3b8' };
-const modalOverlay = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000 };
-const modalContent = { backgroundColor: 'white', width: '500px', borderRadius: '24px', padding: '30px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' };
-const modalHeader = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
-const closeBtn = { background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#94a3b8' };
-const modalScrollArea = { maxHeight: '60vh', overflowY: 'auto' };
+
+// モーダルスタイル
+const modalOverlay = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, backdropFilter: 'blur(4px)' };
+const modalContent = { backgroundColor: 'white', width: '90%', maxWidth: '600px', borderRadius: '32px', padding: '30px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' };
+const modalHeader = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' };
+const closeBtn = { background: 'none', border: 'none', fontSize: '32px', cursor: 'pointer', color: '#94a3b8', lineHeight: '1' };
+const modalScrollArea = { maxHeight: '60vh', overflowY: 'auto', paddingRight: '10px' };
+
+const finishedDayBoxStyle = { marginBottom: '20px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '20px', border: '1px solid #e2e8f0' };
+const finishedDayTitleStyle = { fontSize: '14px', fontWeight: 'bold', color: '#64748b', marginBottom: '10px' };
+const finishedMemberRowStyle = { display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #f1f5f9', fontSize: '15px', alignItems:'center' };
+const finishedBadgeStyle = { fontSize: '11px', color: '#10b981', fontWeight: 'bold', backgroundColor: '#ecfdf5', padding: '4px 10px', borderRadius: '8px' };
+const remainingBoxStyle = { padding: '20px', backgroundColor: '#f0fdf4', borderRadius: '20px', border: '2px solid #2d6a4f' };
+const remainingHeaderStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', color: '#2d6a4f', fontSize: '15px', fontWeight: 'bold' };
+const allDoneTextStyle = { textAlign: 'center', color: '#2d6a4f', fontSize: '16px', padding: '20px', fontWeight: 'bold' };
+const remainingMemberRowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #e2fbe9', fontSize: '15px' };
+const menuBadgeStyle = { fontSize: '11px', backgroundColor: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '8px', border: '1px solid #86efac' };
+const extraBadgeStyle = { fontSize: '10px', backgroundColor: '#dbeafe', color: '#1e40af', padding: '2px 6px', borderRadius: '6px' };
+const miniSortBtnStyle = { border: '1px solid #2d6a4f', borderRadius: '8px', padding: '4px 12px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' };
+const bottomCloseBtnStyle = { width: '100%', marginTop: '20px', padding: '18px', backgroundColor: '#1e3a8a', color: 'white', border: 'none', borderRadius: '16px', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' };

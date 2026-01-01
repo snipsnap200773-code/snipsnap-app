@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Layout } from './Layout';
 
 export default function TaskConfirmMode({ 
-  historyList, 
-  bookingList, // 🌟 bookingListを追加で受け取る
+  historyList = [], 
+  bookingList = [], 
   setPage, 
   facilityName, 
   user, 
@@ -13,33 +13,33 @@ export default function TaskConfirmMode({
     window.scrollTo(0, 0);
   }, []);
 
-  const today = new Date().toLocaleDateString('ja-JP').replace(/\//g, '/');
-  const todayISO = new Date().toLocaleDateString('sv-SE');
+  // 🌟【最重要修正】「今日」の日付を予約リスト(bookingList)から直接特定する
+  // これにより、PCで入力したデータと100%一致させます。
+  const targetBooking = bookingList.find(b => {
+    const bDate = (b.date || "").replace(/-/g, '/'); // 2026/01/01 形式に統一
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+    return b.facility === facilityName && bDate === todayStr;
+  });
+
+  const todayStr = targetBooking ? targetBooking.date.replace(/-/g, '/') : "";
+
+  // 🌟 履歴(historyList)からではなく、予約データのメンバー状態(members)を正解とする
+  const currentMembers = targetBooking?.members || [];
+  const doneMembers = currentMembers.filter(m => m.status === 'done');
+  const cancelMembers = currentMembers.filter(m => m.status === 'cancel');
   
-  // 今日のこの施設の完了実績
-  const todaysWorkRaw = historyList.filter(h => 
-    (h.date === today || h.date === todayISO) && h.facility === facilityName
-  );
+  const totalCount = doneMembers.length + cancelMembers.length;
 
-  // 🌟 今日の予約データから「キャンセル」の人を特定する
-  const todaysBookingData = bookingList.find(b => 
-    b.facility === facilityName && (b.date || "").replace(/\//g, '-') === todayISO
-  );
-  const cancelMembers = todaysBookingData?.members?.filter(m => m.status === 'cancel') || [];
-  
-  const totalCount = (todaysWorkRaw.length + cancelMembers.length);
+  const [sortBy, setSortBy] = useState("room"); 
 
-  const [sortBy, setSortBy] = useState("time"); 
-
-  const sortedWork = [...todaysWorkRaw].sort((a, b) => {
+  const sortedWork = [...doneMembers].sort((a, b) => {
     if (sortBy === "room") return String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
     if (sortBy === "name") return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
     return 0; 
   });
 
   const handleConfirmOK = () => {
-    localStorage.removeItem(`snipsnap_tasks_${facilityName}`);
-    localStorage.removeItem('snipsnap_extra_members');
     if (typeof completeFacilityBooking === 'function') {
       completeFacilityBooking(facilityName);
     }
@@ -58,37 +58,31 @@ export default function TaskConfirmMode({
             <p style={{ color: '#64748b', marginTop: '8px', fontSize: '14px' }}>施設担当者様と一緒に内容をご確認ください</p>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
-            <button onClick={() => setSortBy('room')} style={{...sortBtnMini, backgroundColor: sortBy==='room'?'#1e3a8a':'white', color: sortBy==='room'?'white':'#1e3a8a'}}>部屋順</button>
-            <button onClick={() => setSortBy('name')} style={{...sortBtnMini, backgroundColor: sortBy==='name'?'#1e3a8a':'white', color: sortBy==='name'?'white':'#1e3a8a'}}>名前順</button>
-            <button onClick={() => setSortBy('time')} style={{...sortBtnMini, backgroundColor: sortBy==='time'?'#1e3a8a':'white', color: sortBy==='time'?'white':'#1e3a8a'}}>終了順</button>
-          </div>
-
           <div style={summaryCardStyle}>
             <div style={summaryHeaderStyle}>
               <div style={{fontSize:'16px'}}>🏠 {facilityName} 様</div>
-              {/* 🌟 詳しい内訳を表示 */}
               <div style={{textAlign:'right'}}>
                 <div style={{fontSize:'12px', color:'#64748b'}}>{totalCount}名中</div>
                 <div>
-                  <span style={{color:'#10b981'}}>{todaysWorkRaw.length}名 完了</span> / 
-                  <span style={{color:'#ef4444'}}> {cancelMembers.length}名 キャンセル</span>
+                  <span style={{color:'#10b981', fontWeight:'bold'}}>{doneMembers.length}名 完了</span>
+                  {cancelMembers.length > 0 && (
+                    <span style={{color:'#ef4444', fontWeight:'bold'}}> / {cancelMembers.length}名 欠席</span>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* 完了リスト */}
-            {sortedWork.map((work, idx) => (
+            {/* リスト表示 */}
+            {sortedWork.map((m, idx) => (
               <div key={idx} style={rowStyle}>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={roomLabelStyle}>{work.room}</span>
-                  <span style={{ fontWeight: 'bold', fontSize: '18px', color: '#334155' }}>{work.name} 様</span>
+                  <span style={roomLabelStyle}>{m.room}</span>
+                  <span style={{ fontWeight: 'bold', fontSize: '18px', color: '#334155' }}>{m.name} 様</span>
                 </div>
-                <div style={menuBadgeStyle}>{work.menu}</div>
+                <div style={menuBadgeStyle}>{(m.menus || ["カット"]).join(' / ')}</div>
               </div>
             ))}
 
-            {/* 🌟 キャンセルリスト（髭剃り様の下に追加） */}
             {cancelMembers.map((m, idx) => (
               <div key={`cancel-${idx}`} style={{ ...rowStyle, backgroundColor: '#fff1f2' }}>
                 <div style={{ display: 'flex', alignItems: 'center', opacity: 0.6 }}>
@@ -107,19 +101,17 @@ export default function TaskConfirmMode({
           <div style={footerAreaStyle}>
             <button onClick={handleConfirmOK} style={okBtnStyle}>内容を確認しました（OK）</button>
           </div>
-          
         </div>
       </Layout>
-      <button className="floating-back-btn" onClick={() => setPage('task')}>←</button>
     </div>
   );
 }
 
-const sortBtnMini = { flex: 1, padding: '12px 5px', borderRadius: '12px', border: '1px solid #1e3a8a', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' };
+// スタイル定数は既存のものをそのまま使用してください
 const summaryCardStyle = { backgroundColor: 'white', borderRadius: '28px', padding: '10px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', overflow: 'hidden' };
 const summaryHeaderStyle = { backgroundColor: '#f8fafc', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems:'center', fontWeight: 'bold', borderBottom: '1px solid #edf2f7' };
 const rowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #f1f5f9' };
 const roomLabelStyle = { fontSize: '12px', backgroundColor: '#e2e8f0', color: '#475569', padding: '2px 6px', borderRadius: '4px', marginRight: '10px', fontWeight: 'bold' };
 const menuBadgeStyle = { color: '#10b981', fontWeight: 'bold', fontSize: '15px', backgroundColor: '#ecfdf5', padding: '4px 12px', borderRadius: '10px' };
 const footerAreaStyle = { position: 'fixed', bottom: 0, left: 0, right: 0, padding: '20px', backgroundColor: 'rgba(240, 247, 244, 0.9)', backdropFilter: 'blur(10px)', zIndex: 100 };
-const okBtnStyle = { width: '100%', padding: '22px', borderRadius: '22px', backgroundColor: '#10b981', color: 'white', border: 'none', fontWeight: 'bold', fontSize: '20px', boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)', cursor: 'pointer' };
+const okBtnStyle = { width: '100%', padding: '22px', borderRadius: '22px', backgroundColor: '#10b981', color: 'white', border: 'none', fontWeight: 'bold', fontSize: '20px', cursor: 'pointer' };

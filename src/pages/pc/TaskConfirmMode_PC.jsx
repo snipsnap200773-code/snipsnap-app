@@ -12,25 +12,27 @@ export default function TaskConfirmMode_PC({
     window.scrollTo(0, 0);
   }, []);
 
-  const todayStr = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD
-  const todaySlash = todayStr.replace(/-/g, '/');
-  
-  // 🌟 今日のこの施設の完了実績
-  const todaysWorkRaw = historyList.filter(h => 
-    (h.date === todayStr || h.date === todaySlash) && h.facility === facilityName
-  );
+  // 🌟 モバイル版とロジックを完全に統一
+  // 「今日」の日付を予約リスト(bookingList)から直接特定する
+  const targetBooking = bookingList.find(b => {
+    const bDate = (b.date || "").replace(/-/g, '/'); // 2026/01/01 形式に統一
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+    return b.facility === facilityName && bDate === todayStr;
+  });
 
-  // 🌟 今日の予約データから「キャンセル」の人を特定
-  const todaysBookingData = bookingList.find(b => 
-    b.facility === facilityName && (b.date || "").replace(/\//g, '-') === todayStr
-  );
-  const cancelMembers = todaysBookingData?.members?.filter(m => m.status === 'cancel') || [];
+  // 🌟 履歴(historyList)からではなく、予約データのメンバー状態(members)を正解とする
+  // これにより、DBの同期待ちを回避して20名完了/1名キャンセルを即時表示します
+  const currentMembers = targetBooking?.members || [];
+  const doneMembers = currentMembers.filter(m => m.status === 'done');
+  const cancelMembers = currentMembers.filter(m => m.status === 'cancel');
   
-  const totalCount = (todaysWorkRaw.length + cancelMembers.length);
+  const totalCount = doneMembers.length + cancelMembers.length;
 
   const [sortBy, setSortBy] = useState("room"); 
 
-  const sortedWork = [...todaysWorkRaw].sort((a, b) => {
+  // 表示用リスト（完了者）の並び替え
+  const sortedWork = [...doneMembers].sort((a, b) => {
     if (sortBy === "room") return String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
     if (sortBy === "name") return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
     return 0; 
@@ -62,11 +64,11 @@ export default function TaskConfirmMode_PC({
           </div>
         </header>
 
-        {/* --- 集計エリア --- */}
+        {/* --- 集計エリア：20名 / 1名 が即座に反映されます --- */}
         <div style={summaryGridStyle}>
           <div style={statBoxStyle('#10b981')}>
             <div style={statLabelStyle}>施術完了</div>
-            <div style={statValueStyle}>{todaysWorkRaw.length} <small>名</small></div>
+            <div style={statValueStyle}>{doneMembers.length} <small>名</small></div>
           </div>
           <div style={statBoxStyle('#ef4444')}>
             <div style={statLabelStyle}>当日キャンセル</div>
@@ -100,12 +102,12 @@ export default function TaskConfirmMode_PC({
             </thead>
             <tbody>
               {/* 完了リスト */}
-              {sortedWork.map((work, idx) => (
+              {sortedWork.map((m, idx) => (
                 <tr key={`done-${idx}`} style={trStyle}>
                   <td style={tdStyle}><span style={statusBadgeStyle('#10b981')}>完了</span></td>
-                  <td style={tdStyle}>{work.room}</td>
-                  <td style={{...tdStyle, fontWeight: 'bold'}}>{work.name} 様</td>
-                  <td style={tdStyle}><span style={menuTextStyle}>{work.menu}</span></td>
+                  <td style={tdStyle}>{m.room}</td>
+                  <td style={{...tdStyle, fontWeight: 'bold'}}>{m.name} 様</td>
+                  <td style={tdStyle}><span style={menuTextStyle}>{(m.menus || ["カット"]).join(' / ')}</span></td>
                 </tr>
               ))}
 
@@ -128,7 +130,7 @@ export default function TaskConfirmMode_PC({
 
         {/* --- アクション --- */}
         <footer style={footerStyle}>
-          <button onClick={() => setPage('task-input')} style={backBtnStyle}>← 入力画面に戻る</button>
+          <button onClick={() => setPage('task')} style={backBtnStyle}>← 入力画面に戻る</button>
           <button onClick={handleConfirmOK} style={confirmBtnStyle}>内容を確認しました（確定保存）</button>
         </footer>
       </div>
@@ -137,24 +139,20 @@ export default function TaskConfirmMode_PC({
 }
 
 // --- スタイル定義 ---
-const containerStyle = { padding: '40px 20px', minHeight: '100%', display: 'flex', justifyContent: 'center' };
+const containerStyle = { padding: '40px 20px', minHeight: '100%', display: 'flex', justifyContent: 'center', backgroundColor: '#f0f7f4' };
 const contentCardStyle = { width: '100%', maxWidth: '900px', backgroundColor: 'white', borderRadius: '30px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)', padding: '40px', display: 'flex', flexDirection: 'column', gap: '30px' };
-
 const headerStyle = { textAlign: 'center' };
 const iconStyle = { fontSize: '60px', marginBottom: '10px' };
 const titleStyle = { fontSize: '28px', fontWeight: 'bold', color: '#1e3a8a', margin: 0 };
 const subTitleStyle = { color: '#64748b', fontSize: '16px', marginTop: '10px' };
 const facilityBadgeStyle = { marginTop: '20px', display: 'inline-block', padding: '10px 30px', backgroundColor: '#f8fafc', borderRadius: '50px', border: '1px solid #e2e8f0' };
-
 const summaryGridStyle = { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' };
 const statBoxStyle = (color) => ({ padding: '20px', borderRadius: '20px', border: `2px solid ${color}`, textAlign: 'center' });
 const statLabelStyle = { fontSize: '14px', color: '#64748b', marginBottom: '5px' };
 const statValueStyle = { fontSize: '32px', fontWeight: 'bold', color: '#1e293b' };
-
 const controlRowStyle = { display: 'flex', alignItems: 'center', gap: '15px', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px' };
 const tabGroupStyle = { display: 'flex', gap: '5px', backgroundColor: '#f1f5f9', padding: '5px', borderRadius: '12px' };
 const tabBtnStyle = (active) => ({ padding: '8px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', backgroundColor: active ? 'white' : 'transparent', color: active ? '#1e3a8a' : '#64748b', boxShadow: active ? '0 2px 5px rgba(0,0,0,0.1)' : 'none' });
-
 const listContainerStyle = { flex: 1 };
 const tableStyle = { width: '100%', borderCollapse: 'collapse' };
 const thStyle = { textAlign: 'left', padding: '15px', borderBottom: '2px solid #f1f5f9', color: '#64748b', fontSize: '13px' };
@@ -163,7 +161,6 @@ const trStyle = { transition: '0.2s' };
 const statusBadgeStyle = (color) => ({ backgroundColor: color, color: 'white', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' });
 const menuTextStyle = { backgroundColor: '#ecfdf5', color: '#10b981', padding: '4px 12px', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold' };
 const emptyTextStyle = { textAlign: 'center', padding: '50px', color: '#94a3b8' };
-
 const footerStyle = { display: 'flex', gap: '20px', marginTop: '20px' };
 const backBtnStyle = { flex: 1, padding: '20px', borderRadius: '15px', border: '2px solid #e2e8f0', backgroundColor: 'white', color: '#64748b', fontWeight: 'bold', cursor: 'pointer' };
 const confirmBtnStyle = { flex: 2, padding: '20px', borderRadius: '15px', border: 'none', backgroundColor: '#10b981', color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 5px 15px rgba(16,185,129,0.3)' };

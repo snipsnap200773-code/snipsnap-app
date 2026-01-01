@@ -52,13 +52,18 @@ export default function TaskMode({
     }
   }, [facilities, activeFacility, setActiveFacility]);
 
-  // 進捗計算（bookingListとhistoryListから直接計算）
+  // 🌟【修正】進捗計算ロジック
   const doneCount = allMembersInTask.filter(m => 
     historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility)
   ).length;
   const cancelCount = allMembersInTask.filter(m => m.status === 'cancel').length;
   const totalRaw = allMembersInTask.length;
-  const isFinishedAll = totalRaw > 0 && (doneCount + cancelCount === totalRaw);
+  // 残り人数 = 全体 - 完了 - キャンセル
+  const remainingCount = totalRaw - doneCount - cancelCount;
+  // バーの進捗率 = (完了 + キャンセル) / 全体
+  const progressPercent = totalRaw > 0 ? ((doneCount + cancelCount) / totalRaw) * 100 : 0;
+  // 全員終わったか判定
+  const isFinishedAll = totalRaw > 0 && remainingCount === 0;
 
   useEffect(() => {
     if (isFinishedAll) {
@@ -68,7 +73,6 @@ export default function TaskMode({
     }
   }, [isFinishedAll]);
 
-  // 🌟【保存】bookingListの状態をそのままクラウドへ
   const handleFinalSave = async () => {
     try {
       setSaveMessage("クラウドに保存中...");
@@ -84,7 +88,6 @@ export default function TaskMode({
     }
   };
 
-  // 🌟【キャンセル】bookingListの中身を直接書き換える
   const handleCancelMember = (memberName) => {
     const updatedMembers = allMembersInTask.map(m => 
       m.name === memberName ? { ...m, status: 'cancel' } : m
@@ -94,34 +97,27 @@ export default function TaskMode({
     ));
   };
 
-  // 🌟【戻す】履歴を消し、bookingListのstatusも戻す
   const handleResetMember = async (targetMember) => {
-    // 1. 履歴から削除
     setHistoryList(prev => prev.filter(h => !(h.name === targetMember.name && h.date === todaySlash && h.facility === activeFacility)));
-    // 2. bookingListのstatusをリセット
     const updatedMembers = allMembersInTask.map(m => 
       m.name === targetMember.name ? { ...m, status: 'yet' } : m
     );
     setBookingList(prev => prev.map(b => 
       b.id === currentBooking.id ? { ...b, members: updatedMembers } : b
     ));
-    // 3. DBから削除
     await supabase.from('history').delete().match({ name: targetMember.name, date: todaySlash, facility: activeFacility });
     setShowReset(null);
   };
 
-  // 🌟【完了】履歴を追加し、bookingListのstatusを'done'にする
   const completeTask = (m, finalMenu, colorNum = "") => {
     const price = menuPrices[finalMenu] || 0;
     const menuName = finalMenu + (colorNum ? ` ${colorNum}` : "");
 
-    // historyListを更新
     setHistoryList(prev => [...prev, {
       date: todaySlash, facility: activeFacility, room: m.room, 
       name: m.name, kana: m.kana, menu: menuName, price: price, status: 'done'
     }]);
 
-    // bookingListのstatusを更新（ここが重要）
     const updatedMembers = allMembersInTask.map(member => 
       member.name === m.name ? { ...member, status: 'done' } : member
     );
@@ -176,9 +172,15 @@ export default function TaskMode({
           )}
           <div style={statusRowStyle}>
             <div style={facilityNameBadge}>{activeFacility || "訪問先なし"}</div>
+            {/* 🌟【修正】表示部分の内訳にキャンセル(欠)を追加 */}
             <div style={progressTextStyle}>
-                {totalRaw}名中 / <b style={{color:'#ed32eaff'}}>{doneCount}名 完</b> / 残 {totalRaw - doneCount - cancelCount}名
+                {totalRaw}名中 / <b style={{color:'#ed32eaff'}}>{doneCount}名 完</b> / 残 {remainingCount}名 
+                {cancelCount > 0 && <span style={{color:'#ef4444'}}> / 欠 {cancelCount}名</span>}
             </div>
+          </div>
+          {/* 🌟 プログレスバーの追加（任意：バーがあると進捗が直感的になります） */}
+          <div style={{ width: '100%', height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', marginBottom: '8px', overflow: 'hidden' }}>
+            <div style={{ width: `${progressPercent}%`, height: '100%', backgroundColor: '#ed32ea', transition: 'width 0.3s ease' }}></div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button onClick={() => setSortBy('room')} style={{...sortBtnSmall, backgroundColor: sortBy==='room'?'#1e3a8a':'white', color: sortBy==='room'?'white':'#1e3a8a'}}>部屋順</button>
@@ -189,7 +191,7 @@ export default function TaskMode({
       </div>
 
       <Layout>
-        <div style={{ padding: '10px 12px', marginTop: '110px', paddingBottom: '120px' }}>
+        <div style={{ padding: '10px 12px', marginTop: '125px', paddingBottom: '120px' }}>
           {allMembersInTask.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {sortedDisplayMembers.map((m, idx) => {
@@ -234,7 +236,7 @@ export default function TaskMode({
       <button className="floating-back-btn" onClick={handleFinalSave} style={{ zIndex: 10001, bottom: '20px', left: '20px' }}>←</button>
       {saveMessage && ( <div style={toastStyle}>{saveMessage}</div> )}
 
-      {/* ポップアップ類は修正された関数（handleResetMemberなど）を呼び出すように維持 */}
+      {/* --- モーダル類 --- */}
       {showReset && (
         <div style={overlayStyle} onClick={() => setShowReset(null)}>
           <div style={menuBoxStyle} onClick={e => e.stopPropagation()}>
@@ -316,7 +318,7 @@ export default function TaskMode({
   );
 }
 
-// デザイン定数は維持
+// デザイン定数
 const toastStyle = { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', backgroundColor: 'rgba(30, 58, 138, 0.9)', color: 'white', padding: '16px 32px', borderRadius: '50px', zIndex: 20000, fontWeight: 'bold', fontSize: '17px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', pointerEvents: 'none', animation: 'fadeInOut 1.2s ease-in-out' };
 const fixedHeaderWrapperStyle = { position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '1000px', backgroundColor: '#f0f7f4', zIndex: 1000, padding: '8px 15px', boxSizing: 'border-box', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' };
 const statusRowStyle = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', marginBottom: '8px', padding: '4px 0' };
