@@ -89,7 +89,7 @@ export default function FacilityConfirmBooking_PC({
         <div>
           <h2 style={{margin:0, color: '#2d6a4f'}}>✅ これで決まり！予約確定！</h2>
           <div style={activeMonthBoxStyle}>
-            訪問予定日：{visibleDates.length > 0 ? visibleDates.map(d => d.replace(/-/g, '/')).join(' ・ ') : "キープ枠なし"}
+            訪問予定日：{visibleDates.length > 0 ? visibleDates.map(d => (typeof d === 'string' ? d : d.date).replace(/-/g, '/')).join(' ・ ') : "キープ枠なし"}
           </div>
         </div>
         <div style={monthNavStyle}>
@@ -168,7 +168,7 @@ export default function FacilityConfirmBooking_PC({
 
       <footer style={pcFooterStyle}>
         <div style={{fontSize:'18px', color: '#2d6a4f'}}>合計 <strong>{selectedMembers.length}</strong> 名の予約を確定します</div>
-        <button disabled={selectedMembers.length === 0 || visibleDates.length === 0} onClick={() => setPage('timeselect')}
+        <button disabled={selectedMembers.length === 0 || !visibleDates || visibleDates.length === 0} onClick={() => setPage('timeselect')}
           style={{ ...pcConfirmBtn, backgroundColor: (selectedMembers.length === 0 || visibleDates.length === 0) ? '#ccc' : '#2d6a4f' }}>
           開始時間を選択する ➔
         </button>
