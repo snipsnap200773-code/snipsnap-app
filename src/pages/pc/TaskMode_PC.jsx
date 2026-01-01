@@ -14,6 +14,7 @@ export default function TaskMode_PC({
   colorList = [],
   updateUserNotes 
 }) {
+  // スクロール制御用のRef
   const yetListRef = useRef(null);
   const doneListRef = useRef(null);
   
@@ -24,9 +25,10 @@ export default function TaskMode_PC({
   const todayStr = getTodayStr();
   const todaySlash = todayStr.replace(/-/g, '/');
   
-  const [leftSortBy, setLeftSortBy] = useState("room");
-  const [rightSortBy, setRightSortBy] = useState("time");
-  const [isRightDesc, setIsRightDesc] = useState(true);
+  // ソート状態
+  const [leftSortBy, setLeftSortBy] = useState("room"); 
+  const [rightSortBy, setRightSortBy] = useState("time"); 
+  const [isRightDesc, setIsRightDesc] = useState(true); 
 
   const [showMenu, setShowMenu] = useState(null); 
   const [showColorPicker, setShowColorPicker] = useState(null);
@@ -73,6 +75,7 @@ export default function TaskMode_PC({
     }
   };
 
+  // 操作後に一番上へ戻す
   const scrollReset = () => {
     if (yetListRef.current) yetListRef.current.scrollTop = 0;
     if (doneListRef.current) doneListRef.current.scrollTop = 0;
@@ -83,7 +86,7 @@ export default function TaskMode_PC({
     const price = menuPrices[finalMenu] || 0;
     const menuName = finalMenu + (colorNum ? ` ${colorNum}` : "");
 
-    // 🌟【最重要修正】DBへ保存されるデータ（newRecord）からは finishTime を完全に消す
+    // 🌟 修正：アプリ内 State だけに finishTime を持たせ、DB送信データからは除外されるよう App.jsx と連携
     const newRecord = {
       date: todaySlash, 
       facility: activeFacility, 
@@ -95,7 +98,6 @@ export default function TaskMode_PC({
       status: 'done'
     };
 
-    // 🌟 アプリ内の並び替え専用として、Stateにだけ finishTime を付与して保存する
     setHistoryList(prev => [...prev, { ...newRecord, finishTime: new Date().getTime() }]);
 
     const updatedMembers = allMembersInTask.map(member => 
@@ -108,9 +110,8 @@ export default function TaskMode_PC({
     if (colorNum && typeof updateUserNotes === 'function') {
       updateUserNotes(m.name, activeFacility, menuName);
     }
-    setShowMenu(null); 
-    setShowColorPicker(null);
-    setTimeout(scrollReset, 100);
+    setShowMenu(null); setShowColorPicker(null);
+    setTimeout(scrollReset, 50);
   };
 
   const handleCancelMember = (memberName) => {
@@ -120,7 +121,7 @@ export default function TaskMode_PC({
     setBookingList(prev => prev.map(b => 
       b.id === currentBooking.id ? { ...b, members: updatedMembers } : b
     ));
-    setTimeout(scrollReset, 100);
+    setTimeout(scrollReset, 50);
   };
 
   const handleResetMember = async (targetMember) => {
@@ -133,7 +134,7 @@ export default function TaskMode_PC({
     ));
     await supabase.from('history').delete().match({ name: targetMember.name, date: todaySlash, facility: activeFacility });
     setShowReset(null);
-    setTimeout(scrollReset, 100);
+    setTimeout(scrollReset, 50);
   };
 
   const handleAddExtra = (m) => {
@@ -146,9 +147,10 @@ export default function TaskMode_PC({
       return b;
     }));
     setShowAddList(false);
-    setTimeout(scrollReset, 100);
+    setTimeout(scrollReset, 50);
   };
 
+  // 左側ソート
   const yetMembers = allMembersInTask.filter(m => 
     !historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility) && m.status !== 'cancel'
   ).sort((a, b) => {
@@ -156,6 +158,7 @@ export default function TaskMode_PC({
     return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
   });
 
+  // 右側ソート（施術順がデフォルト）
   const doneMembers = allMembersInTask.filter(m => 
     historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility) || m.status === 'cancel'
   ).sort((a, b) => {
@@ -173,11 +176,13 @@ export default function TaskMode_PC({
   });
 
   const toggleRightSort = (key) => {
-    if (rightSortBy === key) setIsRightDesc(!isRightDesc);
-    else {
+    if (rightSortBy === key) {
+      setIsRightDesc(!isRightDesc);
+    } else {
       setRightSortBy(key);
-      setIsRightDesc(true);
+      setIsRightDesc(true); // 切替時は常に最新が上（降順）
     }
+    setTimeout(scrollReset, 50);
   };
 
   const getMenuOptions = (m) => {
@@ -191,7 +196,7 @@ export default function TaskMode_PC({
       <div style={headerPanelStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h2 style={{ margin: 0, color: '#1e3a8a' }}>✂️ 現場タスク入力（2カラム・高度ソート版）</h2>
+            <h2 style={{ margin: 0, color: '#1e3a8a' }}>✂️ 現場タスク入力（左右スクロール固定）</h2>
             <div style={tabGroup}>
               {facilities.map(f => (
                 <button key={f} onClick={() => setActiveFacility(f)} 
@@ -214,8 +219,8 @@ export default function TaskMode_PC({
           <div style={columnHeader}>
             <h3 style={{margin:0, fontSize:'16px'}}>⏳ 1. 次に施術する人</h3>
             <div style={{display:'flex', gap:'5px'}}>
-               <button onClick={() => setLeftSortBy('room')} style={{...sortBtnTiny, background: leftSortBy==='room'?'#1e3a8a':'white', color: leftSortBy==='room'?'white':'#1e3a8a'}}>部屋順</button>
-               <button onClick={() => setLeftSortBy('name')} style={{...sortBtnTiny, background: leftSortBy==='name'?'#1e3a8a':'white', color: leftSortBy==='name'?'white':'#1e3a8a'}}>名前順</button>
+               <button onClick={() => { setLeftSortBy('room'); scrollReset(); }} style={{...sortBtnTiny, background: leftSortBy==='room'?'#1e3a8a':'white', color: leftSortBy==='room'?'white':'#1e3a8a'}}>部屋順</button>
+               <button onClick={() => { setLeftSortBy('name'); scrollReset(); }} style={{...sortBtnTiny, background: leftSortBy==='name'?'#1e3a8a':'white', color: leftSortBy==='name'?'white':'#1e3a8a'}}>名前順</button>
                <button onClick={() => setShowAddList(true)} style={addBtnTiny}>＋当日追加</button>
             </div>
           </div>
@@ -237,9 +242,8 @@ export default function TaskMode_PC({
 
         <section style={{...columnStyle, backgroundColor: '#f8fafc', borderLeft: '2px solid #e2e8f0'}}>
           <div style={columnHeader}>
-            <h3 style={{margin:0, color:'#10b981', fontSize:'16px'}}>✅ 2. 完了・キャンセル済み</h3>
+            <h3 style={{margin:0, color:'#10b981', fontSize:'16px'}}>✅ 2. 完了済み</h3>
             <div style={{display:'flex', gap:'5px'}}>
-               <button onClick={() => toggleRightSort('time')} style={{...sortBtnTiny, background: rightSortBy==='time'?'#10b981':'white', color: rightSortBy==='time'?'white':'#10b981'}}>施術順{rightSortBy==='time' && (isRightDesc?'▼':'▲')}</button>
                <button onClick={() => toggleRightSort('room')} style={{...sortBtnTiny, background: rightSortBy==='room'?'#10b981':'white', color: rightSortBy==='room'?'white':'#10b981'}}>部屋順{rightSortBy==='room' && (isRightDesc?'▼':'▲')}</button>
                <button onClick={() => toggleRightSort('name')} style={{...sortBtnTiny, background: rightSortBy==='name'?'#10b981':'white', color: rightSortBy==='name'?'white':'#10b981'}}>名前順{rightSortBy==='name' && (isRightDesc?'▼':'▲')}</button>
             </div>
@@ -334,9 +338,9 @@ export default function TaskMode_PC({
   );
 }
 
-// デザイン設定（変更なし）
+// スタイル設定（変更なし）
 const containerStyle = { display: 'flex', flexDirection: 'column', height: '100%', gap: '10px', overflow:'hidden' };
-const headerPanelStyle = { backgroundColor: 'white', padding: '15px 25px', borderRadius: '15px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' };
+const headerPanelStyle = { backgroundColor: 'white', padding: '15px 25px', borderRadius: '15px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)', flexShrink: 0 };
 const mainLayout = { display: 'flex', flex: 1, backgroundColor: 'white', borderRadius: '15px', overflow: 'hidden', border: '1px solid #e2e8f0', minHeight: 0 };
 const columnStyle = { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 };
 const columnHeader = { padding: '15px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', flexShrink: 0 };
@@ -354,14 +358,14 @@ const cardTopStyle = { display: 'flex', justifyContent: 'space-between', marginB
 const roomNumStyle = { fontSize: '14px', fontWeight: 'bold', color: '#64748b' };
 const nameStyle = { fontSize: '18px', fontWeight: 'bold', color: '#1e293b', marginBottom: '5px' };
 const menuSummaryStyle = { fontSize: '12px', color: '#1e3a8a', backgroundColor: '#eff6ff', padding: '3px 8px', borderRadius: '5px', display: 'inline-block' };
-const inlineCancelBtn = { marginTop: '10px', width: '100%', padding: '6px', backgroundColor: '#fff', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '6px', fontSize: '11px', cursor: 'pointer' };
+const inlineCancelBtn = { marginTop: '10px', width: '100%', padding: '6px', backgroundColor: '#fff', color: '#ef4444', border: '1.5px solid #ef4444', borderRadius: '6px', fontSize: '11px', cursor: 'pointer' };
 const badgeYet = { fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#64748b' };
 const badgeStyle = (done, cancel) => ({
   fontSize: '10px', fontWeight: 'bold', padding: '2px 8px', borderRadius: '4px',
   backgroundColor: cancel ? '#ef4444' : '#10b981',
   color: 'white'
 });
-const sortBtnTiny = { padding: '4px 8px', fontSize:'11px', borderRadius:'4px', border:'1px solid #cbd5e1', cursor:'pointer' };
+const sortBtnTiny = { padding: '4px 8px', fontSize:'11px', borderRadius:'4px', border:'1px solid #cbd5e1', cursor:'pointer', backgroundColor: 'white' };
 const addBtnTiny = { padding: '4px 8px', fontSize:'11px', borderRadius:'4px', border:'none', backgroundColor:'#3b82f6', color:'white', cursor:'pointer' };
 const emptyStateStyle = { textAlign: 'center', padding: '40px', color: '#94a3b8', fontSize: '14px' };
 const finishBtn = { margin: '15px', padding: '12px', backgroundColor: '#ed32ea', color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', flexShrink: 0 };

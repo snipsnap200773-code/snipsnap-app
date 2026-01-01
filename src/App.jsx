@@ -49,7 +49,6 @@ function App() {
   const [isPC, setIsPC] = useState(window.innerWidth > 1024);
 
   // 🌟【修正箇所1】リサイズ時はPC判定の更新のみを行い、setPageを絶対に実行しない
-  // これによりブラウザを広げたり狭めたりしても「今のページ」が維持されます
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
@@ -114,20 +113,33 @@ function App() {
     if (fData) setDbFacilities(fData);
   };
 
-  // 🌟【修正箇所2】依存配列から page を削除し、user（ログイン）の変更時のみに絞る
-  // これにより操作中にデータが勝手に読み直されて、入力中のStateが消えるのを防ぎます
   useEffect(() => {
     if (user) {
       refreshAllData();
     }
   }, [user]);
 
+  // 🌟【最重要修正：同期関数】
+  // finishTime等の余計な列を削除し、保存後に即座に再読み込み(refresh)をかけて並び替えを反映させます
   const setHistoryListWithSync = async (updateArg) => {
     const newList = typeof updateArg === 'function' ? updateArg(historyList) : updateArg;
     setHistoryList(newList);
+
     if (newList.length > 0) {
-      const dataToSync = newList.map(({ id, created_at, ...rest }) => rest);
-      await supabase.from('history').upsert(dataToSync, { onConflict: 'date,facility,name' });
+      // Supabaseに存在しない列（finishTime, id, created_at）を除外して送る
+      const dataToSync = newList.map(item => {
+        const { id, created_at, finishTime, ...cleanData } = item;
+        return cleanData;
+      });
+      
+      const { error } = await supabase.from('history').upsert(dataToSync, { onConflict: 'date,facility,name' });
+      
+      if (!error) {
+        // 保存成功後、最新データを取得。これで「完了した人が下（または指定順）」に即座に並び替わります
+        refreshAllData();
+      } else {
+        console.error("Supabase Sync Error:", error.message);
+      }
     }
   };
 
@@ -293,42 +305,36 @@ function App() {
     <div id="root" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', minHeight: '100vh', backgroundColor: '#f0f7f4' }}>
       <div style={{ 
         width: '100%', 
-        // 🌟 PC時はmaxWidthを解除して全画面。スマホ時は1000pxに制限。
         maxWidth: isPC ? 'none' : '1000px', 
         display: 'flex', 
         flexDirection: 'column', 
-        // 🌟 PC時は中央寄せではなく画面端まで伸ばす
         alignItems: isPC ? 'stretch' : 'center', 
         position: 'relative' 
       }}>
         {user.role === 'barber' && (
           isPC ? (
-<AdminMenu_PC 
-  page={page} 
-  setPage={setPage} 
-  setActiveFacility={setActiveFacility}
-  activeFacility={activeFacility}
-  dbFacilities={dbFacilities} 
-  user={user} 
-  users={users} 
-  setUsers={setUsers}
-  historyList={historyList}
-  
-  // 🌟 ここに薬剤リストを追加！
-  colorList={colorList} 
-  
-  setHistoryList={setHistoryListWithSync} 
-  bookingList={bookingList}
-  setBookingList={setBookingListWithSync}
-  
-  ngDates={ngDates}
-  setNgDates={setNgDatesWithSync}
-  keepDates={keepDates}
-  setKeepDates={setManualKeepDatesWithSync}
-  checkDateSelectable={checkDateSelectable}
-  updateUserNotes={updateUserNotes}
-/>
-            ) : (
+            <AdminMenu_PC 
+              page={page} 
+              setPage={setPage} 
+              setActiveFacility={setActiveFacility}
+              activeFacility={activeFacility}
+              dbFacilities={dbFacilities} 
+              user={user} 
+              users={users} 
+              setUsers={setUsers}
+              historyList={historyList}
+              colorList={colorList} 
+              setHistoryList={setHistoryListWithSync} 
+              bookingList={bookingList}
+              setBookingList={setBookingListWithSync}
+              ngDates={ngDates}
+              setNgDates={setNgDatesWithSync}
+              keepDates={keepDates}
+              setKeepDates={setManualKeepDatesWithSync}
+              checkDateSelectable={checkDateSelectable}
+              updateUserNotes={updateUserNotes}
+            />
+          ) : (
             <div className="mobile-view-container" style={{width:'100%'}}>
               {currentPageName === 'admin-top' && <AdminMenu setPage={setPage} setActiveFacility={setActiveFacility} dbFacilities={dbFacilities} user={user} />}
               {currentPageName === 'admin-ng' && <ScheduleNG keepDates={keepDates} bookingList={bookingList} ngDates={ngDates} setNgDates={setNgDates} setPage={setPage} checkDateSelectable={checkDateSelectable} />}
@@ -348,7 +354,6 @@ function App() {
 
         {user.role === 'facility' && (
           isPC ? (
-            /* 🌟 PC版：サイドバー（FacilityMenu_PC）を土台として常に固定表示 */
             <FacilityMenu_PC 
               user={user} 
               page={page}               
@@ -368,7 +373,6 @@ function App() {
             />
           ) : (
             <div className="mobile-view-container" style={{width:'100%'}}>
-              {/* 🌟 スマホ版：リサイズしてもページを維持するように出し分けを整理 */}
               {currentPageName === 'menu' && <Menu setPage={setPage} user={user} />}
               {currentPageName === 'list' && <ListPage users={users.filter(u => u.facility === user.name)} setUsers={async (updated) => { await supabase.from('members').upsert(updated); refreshAllData(); }} deleteUserFromMaster={deleteUserFromMaster} setPage={setPage} facilityName={user.name} />}
               {currentPageName === 'keep-date' && <KeepDate keepDates={keepDates} setKeepDates={setManualKeepDatesWithSync} bookingList={bookingList} ngDates={ngDates} setPage={setPage} checkDateSelectable={checkDateSelectable} user={user} />}
