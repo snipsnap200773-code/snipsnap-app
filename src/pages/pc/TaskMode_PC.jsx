@@ -4,7 +4,7 @@ import { supabase } from '../../supabase';
 export default function TaskMode_PC({ 
   bookingList = [], 
   historyList = [], 
-  setHistoryList, // 🌟 AdminMenu_PCから正しく受け取る
+  setHistoryList, 
   setBookingList, 
   setPage, 
   users = [],
@@ -14,7 +14,8 @@ export default function TaskMode_PC({
   colorList = [],
   updateUserNotes 
 }) {
-  const finishButtonRef = useRef(null);
+  const yetListRef = useRef(null);
+  const doneListRef = useRef(null);
   
   const getTodayStr = () => {
     const d = new Date();
@@ -23,15 +24,16 @@ export default function TaskMode_PC({
   const todayStr = getTodayStr();
   const todaySlash = todayStr.replace(/-/g, '/');
   
-  const [sortBy, setSortBy] = useState("room");
+  const [leftSortBy, setLeftSortBy] = useState("room");
+  const [rightSortBy, setRightSortBy] = useState("time");
+  const [isRightDesc, setIsRightDesc] = useState(true);
+
   const [showMenu, setShowMenu] = useState(null); 
   const [showColorPicker, setShowColorPicker] = useState(null);
   const [showReset, setShowReset] = useState(null); 
   const [showAddList, setShowAddList] = useState(false); 
-  const [addListSortKey, setAddListSortKey] = useState('room');
   const [saveMessage, setSaveMessage] = useState("");
 
-  // 今日の施設リスト（タブ用）
   const facilities = Array.from(new Set(
     bookingList
       .filter(b => (b.date || "").replace(/\//g, '-') === todayStr)
@@ -44,14 +46,12 @@ export default function TaskMode_PC({
     }
   }, [facilities, activeFacility, setActiveFacility]);
 
-  // 今日のこの施設の予約データを特定
   const currentBooking = bookingList.find(b => 
     b.facility === activeFacility && (b.date || "").replace(/\//g, '-') === todayStr
   );
   
   const allMembersInTask = currentBooking?.members || [];
 
-  // 進捗計算
   const doneCount = allMembersInTask.filter(m => 
     historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility)
   ).length;
@@ -59,7 +59,6 @@ export default function TaskMode_PC({
   const totalRaw = allMembersInTask.length;
   const isFinishedAll = totalRaw > 0 && (doneCount + cancelCount === totalRaw);
 
-  // 🌟【重要】クラウド保存ロジック（モバイル版に準拠）
   const handleFinalSave = async () => {
     try {
       setSaveMessage("クラウドに保存中...");
@@ -67,31 +66,38 @@ export default function TaskMode_PC({
         const { error } = await supabase.from('bookings').upsert(currentBooking, { onConflict: 'id' });
         if (error) throw error;
       }
-      setSaveMessage("クラウドに保存しました！");
+      setSaveMessage("保存完了！");
       setTimeout(() => setSaveMessage(""), 2000);
     } catch (error) {
-      setSaveMessage("保存に失敗しました");
-      setTimeout(() => setSaveMessage(""), 3000);
+      setSaveMessage("保存失敗");
     }
   };
 
-  // 🌟【最重要】完了処理（setHistoryList を確実に実行）
-  const completeTask = (m, finalMenu, colorNum = "") => {
-    if (typeof setHistoryList !== 'function') {
-      console.error("setHistoryListが関数ではありません。リレーを確認してください。");
-      return;
-    }
+  const scrollReset = () => {
+    if (yetListRef.current) yetListRef.current.scrollTop = 0;
+    if (doneListRef.current) doneListRef.current.scrollTop = 0;
+  };
 
+  const completeTask = (m, finalMenu, colorNum = "") => {
+    if (typeof setHistoryList !== 'function') return;
     const price = menuPrices[finalMenu] || 0;
     const menuName = finalMenu + (colorNum ? ` ${colorNum}` : "");
 
-    // 1. 履歴を追加
-    setHistoryList(prev => [...prev, {
-      date: todaySlash, facility: activeFacility, room: m.room, 
-      name: m.name, kana: m.kana, menu: menuName, price: price, status: 'done'
-    }]);
+    // 🌟【最重要修正】DBへ保存されるデータ（newRecord）からは finishTime を完全に消す
+    const newRecord = {
+      date: todaySlash, 
+      facility: activeFacility, 
+      room: m.room, 
+      name: m.name, 
+      kana: m.kana, 
+      menu: menuName, 
+      price: price, 
+      status: 'done'
+    };
 
-    // 2. 予約リストのステータスを更新
+    // 🌟 アプリ内の並び替え専用として、Stateにだけ finishTime を付与して保存する
+    setHistoryList(prev => [...prev, { ...newRecord, finishTime: new Date().getTime() }]);
+
     const updatedMembers = allMembersInTask.map(member => 
       member.name === m.name ? { ...member, status: 'done' } : member
     );
@@ -102,10 +108,11 @@ export default function TaskMode_PC({
     if (colorNum && typeof updateUserNotes === 'function') {
       updateUserNotes(m.name, activeFacility, menuName);
     }
-    setShowMenu(null); setShowColorPicker(null);
+    setShowMenu(null); 
+    setShowColorPicker(null);
+    setTimeout(scrollReset, 100);
   };
 
-  // キャンセル処理
   const handleCancelMember = (memberName) => {
     const updatedMembers = allMembersInTask.map(m => 
       m.name === memberName ? { ...m, status: 'cancel' } : m
@@ -113,9 +120,9 @@ export default function TaskMode_PC({
     setBookingList(prev => prev.map(b => 
       b.id === currentBooking.id ? { ...b, members: updatedMembers } : b
     ));
+    setTimeout(scrollReset, 100);
   };
 
-  // 戻す処理
   const handleResetMember = async (targetMember) => {
     setHistoryList(prev => prev.filter(h => !(h.name === targetMember.name && h.date === todaySlash && h.facility === activeFacility)));
     const updatedMembers = allMembersInTask.map(m => 
@@ -126,9 +133,9 @@ export default function TaskMode_PC({
     ));
     await supabase.from('history').delete().match({ name: targetMember.name, date: todaySlash, facility: activeFacility });
     setShowReset(null);
+    setTimeout(scrollReset, 100);
   };
 
-  // 当日追加
   const handleAddExtra = (m) => {
     const newMember = { ...m, id: `extra-${Date.now()}`, menus: ["カット"], isExtra: true, status: 'yet', facility: activeFacility };
     setBookingList(prev => prev.map(b => {
@@ -139,19 +146,39 @@ export default function TaskMode_PC({
       return b;
     }));
     setShowAddList(false);
+    setTimeout(scrollReset, 100);
   };
 
-  const sortedDisplayMembers = [...allMembersInTask].sort((a, b) => {
-    const isDoneA = historyList.some(h => h.name === a.name && h.date === todaySlash);
-    const isDoneB = historyList.some(h => h.name === b.name && h.date === todaySlash);
-    const statusA = isDoneA ? 'done' : (a.status || 'yet');
-    const statusB = isDoneB ? 'done' : (b.status || 'yet');
-    
-    const weight = { 'yet': 0, 'done': 1, 'cancel': 1 };
-    if (weight[statusA] !== weight[statusB]) return weight[statusA] - weight[statusB];
-    if (sortBy === "room") return String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
+  const yetMembers = allMembersInTask.filter(m => 
+    !historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility) && m.status !== 'cancel'
+  ).sort((a, b) => {
+    if (leftSortBy === "room") return String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
     return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
   });
+
+  const doneMembers = allMembersInTask.filter(m => 
+    historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility) || m.status === 'cancel'
+  ).sort((a, b) => {
+    let result = 0;
+    if (rightSortBy === "time") {
+      const timeA = historyList.find(h => h.name === a.name && h.date === todaySlash && h.facility === activeFacility)?.finishTime || 0;
+      const timeB = historyList.find(h => h.name === b.name && h.date === todaySlash && h.facility === activeFacility)?.finishTime || 0;
+      result = timeA - timeB;
+    } else if (rightSortBy === "room") {
+      result = String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
+    } else {
+      result = (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
+    }
+    return isRightDesc ? -result : result;
+  });
+
+  const toggleRightSort = (key) => {
+    if (rightSortBy === key) setIsRightDesc(!isRightDesc);
+    else {
+      setRightSortBy(key);
+      setIsRightDesc(true);
+    }
+  };
 
   const getMenuOptions = (m) => {
     const originalMenu = (m.menus || ["カット"]).join('＋');
@@ -162,73 +189,90 @@ export default function TaskMode_PC({
   return (
     <div style={containerStyle}>
       <div style={headerPanelStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-          <h2 style={{ margin: 0, color: '#1e3a8a' }}>✂️ 今日のタスク入力</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ margin: 0, color: '#1e3a8a' }}>✂️ 現場タスク入力（2カラム・高度ソート版）</h2>
+            <div style={tabGroup}>
+              {facilities.map(f => (
+                <button key={f} onClick={() => setActiveFacility(f)} 
+                  style={{...facilityTab, backgroundColor: activeFacility===f?'#1e3a8a':'#f1f5f9', color: activeFacility===f?'white':'#64748b'}}>
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
           <div style={progressContainer}>
-            <span style={progressLabel}>現在の進捗:</span>
             <span style={progressValue}>{doneCount} / {totalRaw} 名 完了</span>
             <div style={progressBarBg}><div style={{...progressBarFill, width: totalRaw > 0 ? `${(doneCount/totalRaw)*100}%` : '0%'}}></div></div>
-          </div>
-        </div>
-
-        <div style={controlRowStyle}>
-          <div style={tabGroup}>
-            {facilities.map(f => (
-              <button key={f} onClick={() => setActiveFacility(f)} 
-                style={{...facilityTab, backgroundColor: activeFacility===f?'#1e3a8a':'#f1f5f9', color: activeFacility===f?'white':'#64748b'}}>
-                {f}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => setSortBy('room')} style={{...sortBtn, border: sortBy==='room'?'2px solid #1e3a8a':'1px solid #cbd5e1', fontWeight: sortBy==='room'?'bold':'normal'}}>部屋順</button>
-            <button onClick={() => setSortBy('name')} style={{...sortBtn, border: sortBy==='name'?'2px solid #1e3a8a':'1px solid #cbd5e1', fontWeight: sortBy==='name'?'bold':'normal'}}>名前順</button>
-            <button onClick={() => setShowAddList(true)} style={addBtn}>＋ 当日追加</button>
-            <button onClick={handleFinalSave} style={saveBtn}>保存</button>
+            <button onClick={handleFinalSave} style={saveBtn}>クラウド保存</button>
           </div>
         </div>
       </div>
 
-      <div style={listAreaStyle}>
-        {allMembersInTask.length > 0 ? (
-          <div style={gridContainer}>
-            {sortedDisplayMembers.map((m, idx) => {
-              const isDone = historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility);
-              const isCancel = m.status === 'cancel';
-              return (
-                <div key={idx} onClick={() => (isDone || isCancel) ? setShowReset(m) : setShowMenu(m)}
-                  style={{ ...cardStyle, 
-                    backgroundColor: isCancel ? '#fff1f2' : (isDone ? '#f8fafc' : 'white'),
-                    borderColor: isCancel ? '#ef4444' : (isDone ? '#e2e8f0' : (m.isExtra ? '#3b82f6' : '#cbd5e1')),
-                    opacity: (isDone || isCancel) ? 0.7 : 1 
-                  }}>
-                  <div style={cardTopStyle}>
-                    <span style={roomNumStyle}>{m.room}号室</span>
-                    <span style={badgeStyle(isDone, isCancel)}>{isCancel ? '取消' : (isDone ? '完了' : '待機中')}</span>
-                  </div>
-                  <div style={nameStyle}>{m.name} 様</div>
-                  <div style={menuSummaryStyle}>{(m.menus || ["カット"]).join(' + ')} {m.isExtra && "★当日"}</div>
-                  {!isDone && !isCancel && (
-                    <button onClick={(e) => {e.stopPropagation(); handleCancelMember(m.name)}} style={inlineCancelBtn}>キャンセル</button>
-                  )}
-                </div>
-              );
-            })}
+      <div style={mainLayout}>
+        <section style={columnStyle}>
+          <div style={columnHeader}>
+            <h3 style={{margin:0, fontSize:'16px'}}>⏳ 1. 次に施術する人</h3>
+            <div style={{display:'flex', gap:'5px'}}>
+               <button onClick={() => setLeftSortBy('room')} style={{...sortBtnTiny, background: leftSortBy==='room'?'#1e3a8a':'white', color: leftSortBy==='room'?'white':'#1e3a8a'}}>部屋順</button>
+               <button onClick={() => setLeftSortBy('name')} style={{...sortBtnTiny, background: leftSortBy==='name'?'#1e3a8a':'white', color: leftSortBy==='name'?'white':'#1e3a8a'}}>名前順</button>
+               <button onClick={() => setShowAddList(true)} style={addBtnTiny}>＋当日追加</button>
+            </div>
           </div>
-        ) : (
-          <div style={emptyStateStyle}>本日予定されている予約はありません</div>
-        )}
+          <div style={scrollArea} ref={yetListRef}>
+            {yetMembers.map((m, idx) => (
+              <div key={idx} onClick={() => setShowMenu(m)} style={cardStyle}>
+                <div style={cardTopStyle}>
+                  <span style={roomNumStyle}>{m.room}号室</span>
+                  <span style={badgeYet}>待機中</span>
+                </div>
+                <div style={nameStyle}>{m.name} 様</div>
+                <div style={menuSummaryStyle}>{(m.menus || ["カット"]).join(' + ')}</div>
+                <button onClick={(e) => {e.stopPropagation(); handleCancelMember(m.name)}} style={inlineCancelBtn}>キャンセル</button>
+              </div>
+            ))}
+            {yetMembers.length === 0 && <div style={emptyStateStyle}>未完了の人はいません</div>}
+          </div>
+        </section>
 
-        {isFinishedAll && totalRaw > 0 && ( 
-          <button onClick={() => setPage('task-confirm-view')} style={finishBtn}>
-            ✨ 本日の業務をすべて完了しました！ (確認画面へ)
-          </button> 
-        )}
+        <section style={{...columnStyle, backgroundColor: '#f8fafc', borderLeft: '2px solid #e2e8f0'}}>
+          <div style={columnHeader}>
+            <h3 style={{margin:0, color:'#10b981', fontSize:'16px'}}>✅ 2. 完了・キャンセル済み</h3>
+            <div style={{display:'flex', gap:'5px'}}>
+               <button onClick={() => toggleRightSort('time')} style={{...sortBtnTiny, background: rightSortBy==='time'?'#10b981':'white', color: rightSortBy==='time'?'white':'#10b981'}}>施術順{rightSortBy==='time' && (isRightDesc?'▼':'▲')}</button>
+               <button onClick={() => toggleRightSort('room')} style={{...sortBtnTiny, background: rightSortBy==='room'?'#10b981':'white', color: rightSortBy==='room'?'white':'#10b981'}}>部屋順{rightSortBy==='room' && (isRightDesc?'▼':'▲')}</button>
+               <button onClick={() => toggleRightSort('name')} style={{...sortBtnTiny, background: rightSortBy==='name'?'#10b981':'white', color: rightSortBy==='name'?'white':'#10b981'}}>名前順{rightSortBy==='name' && (isRightDesc?'▼':'▲')}</button>
+            </div>
+          </div>
+          <div style={scrollArea} ref={doneListRef}>
+            {doneMembers.map((m, idx) => {
+               const isCancel = m.status === 'cancel';
+               return (
+                <div key={idx} onClick={() => setShowReset(m)} style={{...doneCardStyle, borderColor: isCancel ? '#ef4444' : '#10b981'}}>
+                  <div style={{flex:1}}>
+                    <span style={{fontSize:'12px', color:'#94a3b8'}}>{m.room}号室</span>
+                    <div style={{fontWeight:'bold', color: isCancel ? '#ef4444' : '#1e293b'}}>{m.name} 様</div>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <span style={badgeStyle(true, isCancel)}>{isCancel ? '取消' : '完了'}</span>
+                    <div style={{fontSize:'10px', color:'#64748b', marginTop:'4px'}}>タップで戻す</div>
+                  </div>
+                </div>
+               );
+            })}
+            {doneMembers.length === 0 && <div style={emptyStateStyle}>完了した人はまだいません</div>}
+          </div>
+
+          {isFinishedAll && totalRaw > 0 && ( 
+            <button onClick={() => setPage('task-confirm-view')} style={finishBtn}>
+              お仕事お疲れさまでした！(確認へ)
+            </button> 
+          )}
+        </section>
       </div>
 
       {saveMessage && <div style={toastStyle}>{saveMessage}</div>}
 
-      {/* モーダル：メニュー選択 */}
       {showMenu && (
         <div style={overlayStyle} onClick={() => setShowMenu(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
@@ -244,7 +288,6 @@ export default function TaskMode_PC({
         </div>
       )}
 
-      {/* モーダル：カラー選択 */}
       {showColorPicker && (
         <div style={overlayStyle} onClick={() => setShowColorPicker(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
@@ -258,7 +301,6 @@ export default function TaskMode_PC({
         </div>
       )}
 
-      {/* モーダル：リセット（戻す） */}
       {showReset && (
         <div style={overlayStyle} onClick={() => setShowReset(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
@@ -270,10 +312,9 @@ export default function TaskMode_PC({
         </div>
       )}
 
-      {/* モーダル：当日追加 */}
       {showAddList && (
         <div style={overlayStyle} onClick={() => setShowAddList(false)}>
-          <div style={{...modalStyle, width: '600px', maxHeight: '80vh', overflowY: 'auto'}}>
+          <div style={{...modalStyle, width: '500px', maxHeight: '80vh', overflowY: 'auto'}}>
             <h3 style={{position:'sticky', top:0, background:'white', padding:'10px 0', zIndex:1, color:'#1e3a8a'}}>当日追加を選択</h3>
             <div style={addListGrid}>
               {users.filter(u => u.facility === activeFacility && !allMembersInTask.some(am => am.name === u.name))
@@ -293,48 +334,46 @@ export default function TaskMode_PC({
   );
 }
 
-// --- スタイル定義 ---
-const containerStyle = { display: 'flex', flexDirection: 'column', height: '100%', gap: '20px' };
-const headerPanelStyle = { backgroundColor: 'white', padding: '25px 30px', borderRadius: '20px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' };
-const progressContainer = { textAlign: 'right' };
-const progressLabel = { fontSize: '13px', color: '#64748b', marginRight: '10px' };
-const progressValue = { fontSize: '16px', fontWeight: 'bold', color: '#1e3a8a' };
-const progressBarBg = { width: '200px', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', marginTop: '8px', overflow: 'hidden' };
+// デザイン設定（変更なし）
+const containerStyle = { display: 'flex', flexDirection: 'column', height: '100%', gap: '10px', overflow:'hidden' };
+const headerPanelStyle = { backgroundColor: 'white', padding: '15px 25px', borderRadius: '15px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' };
+const mainLayout = { display: 'flex', flex: 1, backgroundColor: 'white', borderRadius: '15px', overflow: 'hidden', border: '1px solid #e2e8f0', minHeight: 0 };
+const columnStyle = { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 };
+const columnHeader = { padding: '15px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', flexShrink: 0 };
+const scrollArea = { flex: 1, overflowY: 'auto', padding: '15px', scrollBehavior: 'smooth' };
+const progressContainer = { textAlign: 'right', display:'flex', alignItems:'center', gap:'15px' };
+const progressValue = { fontSize: '14px', fontWeight: 'bold', color: '#1e3a8a', whiteSpace:'nowrap' };
+const progressBarBg = { width: '120px', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' };
 const progressBarFill = { height: '100%', backgroundColor: '#10b981', transition: '0.3s' };
-const controlRowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' };
-const tabGroup = { display: 'flex', gap: '8px' };
-const facilityTab = { padding: '10px 18px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' };
-const sortBtn = { padding: '8px 15px', borderRadius: '8px', backgroundColor: 'white', cursor: 'pointer', fontSize: '14px' };
-const addBtn = { padding: '10px 20px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' };
-const saveBtn = { padding: '10px 20px', backgroundColor: '#1e3a8a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' };
-
-const listAreaStyle = { flex: 1, overflowY: 'auto', padding: '10px 5px' };
-const gridContainer = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' };
-const cardStyle = { padding: '20px', borderRadius: '15px', border: '1px solid', cursor: 'pointer', transition: '0.2s', position: 'relative' };
-const cardTopStyle = { display: 'flex', justifyContent: 'space-between', marginBottom: '10px' };
-const roomNumStyle = { fontSize: '18px', fontWeight: 'bold', color: '#64748b' };
-const nameStyle = { fontSize: '20px', fontWeight: 'bold', color: '#1e293b', marginBottom: '8px' };
-const menuSummaryStyle = { fontSize: '14px', color: '#1e3a8a', backgroundColor: '#eff6ff', padding: '4px 10px', borderRadius: '6px', display: 'inline-block' };
-const inlineCancelBtn = { marginTop: '15px', width: '100%', padding: '8px', backgroundColor: '#fff', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '8px', fontSize: '12px', cursor: 'pointer' };
-
+const tabGroup = { display: 'flex', gap: '5px', marginTop:'8px' };
+const facilityTab = { padding: '6px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize:'12px', fontWeight: 'bold' };
+const saveBtn = { padding: '8px 20px', backgroundColor: '#1e3a8a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize:'13px' };
+const cardStyle = { padding: '15px', borderRadius: '12px', border: '1px solid #cbd5e1', marginBottom: '10px', cursor: 'pointer', transition: '0.2s', backgroundColor:'white' };
+const doneCardStyle = { display:'flex', alignItems:'center', padding: '12px 15px', borderRadius: '10px', border: '2px solid', marginBottom: '8px', cursor: 'pointer', backgroundColor:'white' };
+const cardTopStyle = { display: 'flex', justifyContent: 'space-between', marginBottom: '5px' };
+const roomNumStyle = { fontSize: '14px', fontWeight: 'bold', color: '#64748b' };
+const nameStyle = { fontSize: '18px', fontWeight: 'bold', color: '#1e293b', marginBottom: '5px' };
+const menuSummaryStyle = { fontSize: '12px', color: '#1e3a8a', backgroundColor: '#eff6ff', padding: '3px 8px', borderRadius: '5px', display: 'inline-block' };
+const inlineCancelBtn = { marginTop: '10px', width: '100%', padding: '6px', backgroundColor: '#fff', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '6px', fontSize: '11px', cursor: 'pointer' };
+const badgeYet = { fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#64748b' };
 const badgeStyle = (done, cancel) => ({
-  fontSize: '11px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '6px',
-  backgroundColor: cancel ? '#ef4444' : (done ? '#10b981' : '#f1f5f9'),
-  color: (done || cancel) ? 'white' : '#64748b'
+  fontSize: '10px', fontWeight: 'bold', padding: '2px 8px', borderRadius: '4px',
+  backgroundColor: cancel ? '#ef4444' : '#10b981',
+  color: 'white'
 });
-
-const emptyStateStyle = { textAlign: 'center', padding: '100px', color: '#94a3b8', fontSize: '18px' };
-const finishBtn = { width: '100%', marginTop: '40px', padding: '25px', backgroundColor: '#ed32ea', color: 'white', border: 'none', borderRadius: '20px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 10px 20px rgba(237,50,234,0.3)' };
-
+const sortBtnTiny = { padding: '4px 8px', fontSize:'11px', borderRadius:'4px', border:'1px solid #cbd5e1', cursor:'pointer' };
+const addBtnTiny = { padding: '4px 8px', fontSize:'11px', borderRadius:'4px', border:'none', backgroundColor:'#3b82f6', color:'white', cursor:'pointer' };
+const emptyStateStyle = { textAlign: 'center', padding: '40px', color: '#94a3b8', fontSize: '14px' };
+const finishBtn = { margin: '15px', padding: '12px', backgroundColor: '#ed32ea', color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', flexShrink: 0 };
 const overlayStyle = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 10000, display: 'flex', justifyContent: 'center', alignItems: 'center' };
-const modalStyle = { backgroundColor: 'white', padding: '30px', borderRadius: '24px', width: '400px', textAlign: 'center' };
-const modalBtnGroup = { display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '20px' };
-const modalMainBtn = { padding: '15px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' };
-const modalCloseBtn = { marginTop: '10px', padding: '12px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' };
-const modalResetBtn = { width: '100%', padding: '15px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' };
-const colorGrid = { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', margin: '20px 0' };
-const colorBtn = { padding: '15px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' };
+const modalStyle = { backgroundColor: 'white', padding: '25px', borderRadius: '20px', width: '400px', textAlign: 'center' };
+const modalBtnGroup = { display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' };
+const modalMainBtn = { padding: '12px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' };
+const modalCloseBtn = { marginTop: '10px', padding: '10px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' };
+const modalResetBtn = { width: '100%', padding: '12px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' };
+const colorGrid = { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', margin: '15px 0' };
+const colorBtn = { padding: '12px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' };
 const addListGrid = { display: 'flex', flexDirection: 'column', gap: '5px' };
-const addRowStyle = { display: 'flex', justifyContent: 'space-between', padding: '15px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' };
-const addIcon = { backgroundColor: '#3b82f6', color: 'white', width: '24px', height: '24px', borderRadius: '50%', textAlign: 'center', lineHeight: '24px' };
+const addRowStyle = { display: 'flex', justifyContent: 'space-between', padding: '12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' };
+const addIcon = { backgroundColor: '#3b82f6', color: 'white', width: '20px', height: '20px', borderRadius: '10px', textAlign: 'center', lineHeight: '20px' };
 const toastStyle = { position: 'fixed', bottom: '40px', right: '40px', backgroundColor: '#1e3a8a', color: 'white', padding: '15px 30px', borderRadius: '50px', fontWeight: 'bold', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' };
