@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'; // 🌟 useEffectを追加
-import { Layout } from './Layout';
+import { Layout } from '../../Layout';
 
 export default function AdminMenu({ setPage, setActiveFacility, dbFacilities }) {
   
