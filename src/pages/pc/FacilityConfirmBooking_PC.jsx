@@ -17,7 +17,17 @@ export default function FacilityConfirmBooking_PC({
     const thisMonthHistory = historyList.filter(h => h.facility === user?.name && h.date.startsWith(currentMonthSlash));
     const isAllDone = thisMonthHistory.length >= users.length && users.length > 0;
     if (isAllDone) return new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    if (keepDates.length > 0) return new Date([...keepDates].sort()[0]);
+    
+    if (keepDates.length > 0) {
+      // keepDatesがオブジェクト配列でも文字列配列でも対応してソート
+      const sorted = [...keepDates].sort((a, b) => {
+        const dateA = typeof a === 'string' ? a : a.date;
+        const dateB = typeof b === 'string' ? b : b.date;
+        return dateA.localeCompare(dateB);
+      });
+      const firstDate = typeof sorted[0] === 'string' ? sorted[0] : sorted[0].date;
+      return new Date(firstDate);
+    }
     return now;
   });
 
@@ -25,11 +35,11 @@ export default function FacilityConfirmBooking_PC({
   const [sortOrder, setSortOrder] = useState('asc'); 
   const simpleMenus = ['カット', 'カラー', 'パーマ'];
 
-  // 🌟 スクロール制御用のRef
+  // スクロール制御用のRef
   const rightListEndRef = useRef(null);
   const leftListRef = useRef(null);
 
-  // 🌟 右側：メンバーが追加されたら一番下まで自動スクロール
+  // 右側：メンバーが追加されたら一番下まで自動スクロール
   useEffect(() => {
     if (rightListEndRef.current) {
       rightListEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -41,7 +51,15 @@ export default function FacilityConfirmBooking_PC({
   };
 
   const currentMonthKey = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth() + 1).padStart(2, '0')}`;
-  const visibleDates = keepDates.filter(d => d.startsWith(currentMonthKey)).sort();
+
+  // 🌟【最重要：根本修正】どんなデータ形式が来ても「文字列の配列」に変換する
+  const visibleDates = keepDates
+    .filter(d => {
+      const dateStr = typeof d === 'string' ? d : d?.date;
+      return dateStr && dateStr.startsWith(currentMonthKey);
+    })
+    .map(d => (typeof d === 'string' ? d : d.date)) 
+    .sort();
 
   const sortedUsers = [...users].sort((a, b) => {
     let valA = sortKey === 'name' ? (a.kana || a.name) : ((a.floor || '') + a.room);
@@ -55,7 +73,6 @@ export default function FacilityConfirmBooking_PC({
     else { setSortKey(key); setSortOrder('asc'); }
   };
 
-  // 🌟 選択・解除ロジック（左側のスクロールも制御）
   const toggleUserSelection = (u, index = null) => {
     const isAdded = selectedMembers.find(m => m.id === u.id);
     if (isAdded) {
@@ -63,7 +80,6 @@ export default function FacilityConfirmBooking_PC({
     } else {
       setSelectedMembers([...selectedMembers, { ...u, menus: ['カット'] }]);
       
-      // 🌟 左側の自動スクロール：少し遅らせて「次の人」が中心に来るようにする
       if (index !== null && leftListRef.current) {
         const nextElement = leftListRef.current.children[index + 1];
         if (nextElement) {
@@ -89,7 +105,7 @@ export default function FacilityConfirmBooking_PC({
         <div>
           <h2 style={{margin:0, color: '#2d6a4f'}}>✅ これで決まり！予約確定！</h2>
           <div style={activeMonthBoxStyle}>
-            訪問予定日：{visibleDates.length > 0 ? visibleDates.map(d => (typeof d === 'string' ? d : d.date).replace(/-/g, '/')).join(' ・ ') : "キープ枠なし"}
+            訪問予定日：{visibleDates.length > 0 ? visibleDates.map(d => d.replace(/-/g, '/')).join(' ・ ') : "キープ枠なし"}
           </div>
         </div>
         <div style={monthNavStyle}>
@@ -100,7 +116,6 @@ export default function FacilityConfirmBooking_PC({
       </header>
 
       <div style={twoColumnLayout}>
-        {/* 左側：名簿 */}
         <section style={leftScrollSide}>
           <div style={stickySubHeader}>
             <div style={{fontWeight:'bold', color:'#666', fontSize:'14px'}}>1. 施術を受ける方を選んでください</div>
@@ -130,7 +145,6 @@ export default function FacilityConfirmBooking_PC({
           </div>
         </section>
 
-        {/* 右側：メニュー確認 */}
         <section style={rightScrollSide}>
           <div style={stickySubHeader}>
             <div style={{fontWeight:'bold', color:'#2d6a4f', fontSize:'14px'}}>2. 選んだ人のメニューを確認</div>
@@ -158,7 +172,6 @@ export default function FacilityConfirmBooking_PC({
                     </div>
                   </div>
                 ))}
-                {/* 🌟 スクロール用の目印 */}
                 <div ref={rightListEndRef} />
               </>
             )}
@@ -168,7 +181,7 @@ export default function FacilityConfirmBooking_PC({
 
       <footer style={pcFooterStyle}>
         <div style={{fontSize:'18px', color: '#2d6a4f'}}>合計 <strong>{selectedMembers.length}</strong> 名の予約を確定します</div>
-        <button disabled={selectedMembers.length === 0 || !visibleDates || visibleDates.length === 0} onClick={() => setPage('timeselect')}
+        <button disabled={selectedMembers.length === 0 || visibleDates.length === 0} onClick={() => setPage('timeselect')}
           style={{ ...pcConfirmBtn, backgroundColor: (selectedMembers.length === 0 || visibleDates.length === 0) ? '#ccc' : '#2d6a4f' }}>
           開始時間を選択する ➔
         </button>
