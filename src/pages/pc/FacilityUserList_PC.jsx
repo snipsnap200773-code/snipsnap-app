@@ -142,7 +142,7 @@ export default function FacilityUserList_PC({ users, facilityName, refreshAllDat
                 <th style={{...thStyle, width: '80px'}}>部屋</th>
                 <th style={{...thStyle, width: '220px'}}>お名前</th>
                 <th style={thStyle}>備考（スタッフ用メモ）</th>
-                <th style={{...thStyle, width: '80px', textAlign:'center'}}>ベッド</th>
+                <th style={{...thStyle, width: '50px', textAlign:'center'}}>ベッド</th>
                 <th style={{...thStyle, width: '150px', textAlign:'center'}}>操作</th>
               </tr>
             </thead>
