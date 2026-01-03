@@ -25,24 +25,14 @@ export default function FacilityThanks_PC({ setPage, user }) {
 
         <div style={nextActionStyle}>
           <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px' }}>
-            続けて他の作業を行いますか？
+            現在の予約状況や進捗はこちらからご確認いただけます
           </p>
           <div style={btnGroupStyle}>
             <button 
-              onClick={() => setPage('menu')} 
+              onClick={() => setPage('schedule')} 
               style={primaryBtnStyle}
             >
-              📅 カレンダー（キープ）に戻る
-            </button>
-            <button 
-              onClick={() => {
-                // ページを戻すのではなく、サイドバーのタブ切り替えに相当する処理
-                // FacilityMenu_PC側で制御するため、一旦menuに戻してからユーザーが選ぶ形
-                setPage('menu');
-              }} 
-              style={secondaryBtnStyle}
-            >
-              👥 入居者名簿を確認する
+              📊 予約の状況・進捗を確認する
             </button>
           </div>
         </div>
@@ -119,26 +109,14 @@ const btnGroupStyle = {
 };
 
 const primaryBtnStyle = {
-  padding: '15px 30px',
+  padding: '18px 45px', // ボタンを少し大きくして目立たせました
   backgroundColor: '#2d6a4f',
   color: 'white',
   border: 'none',
-  borderRadius: '16px',
+  borderRadius: '20px',
   fontWeight: 'bold',
-  fontSize: '15px',
+  fontSize: '16px',
   cursor: 'pointer',
   boxShadow: '0 8px 15px rgba(45, 106, 79, 0.2)',
-  transition: '0.3s'
-};
-
-const secondaryBtnStyle = {
-  padding: '15px 30px',
-  backgroundColor: 'white',
-  color: '#2d6a4f',
-  border: '2px solid #2d6a4f',
-  borderRadius: '16px',
-  fontWeight: 'bold',
-  fontSize: '15px',
-  cursor: 'pointer',
   transition: '0.3s'
 };

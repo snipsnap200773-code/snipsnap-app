@@ -7,6 +7,7 @@ import FacilityFinalPreview_PC from './FacilityFinalPreview_PC';
 import FacilityThanks_PC from './FacilityThanks_PC';
 import FacilityScheduleManager_PC from './FacilityScheduleManager_PC'; 
 import FacilityVisitHistory_PC from './FacilityVisitHistory_PC';
+import FacilityInvoice_PC from './FacilityInvoice_PC'; 
 
 export default function FacilityMenu_PC({ 
   user, page, setPage, users, bookingList, historyList, keepDates, 
@@ -18,13 +19,18 @@ export default function FacilityMenu_PC({
     if (['confirm', 'timeselect', 'preview', 'thanks'].includes(page)) {
       return 'confirm';
     }
+    // 🌟 完了画面から 'schedule' が送られてきた時の対策
+    if (page === 'schedule') return 'schedule-manager';
     return page === 'menu' ? 'user-list' : page;
   });
 
-  // App.jsx側のページ変更とサイドバーを同期
+  // 🌟 App.jsx側のページ変更とサイドバーを同期
   useEffect(() => {
     if (['confirm', 'timeselect', 'preview', 'thanks'].includes(page)) {
       setActiveTab('confirm');
+    } else if (page === 'schedule') {
+      // 🌟 ここ！完了画面のボタンから来た時にタブを「進捗」に切り替える
+      setActiveTab('schedule-manager');
     } else if (page !== 'menu') {
       setActiveTab(page);
     }
@@ -46,7 +52,6 @@ export default function FacilityMenu_PC({
         </div>
         
         <nav style={navStyle}>
-          {/* 1. 名簿管理 */}
           <button 
             onClick={() => { setActiveTab('user-list'); setPage('menu'); }}
             style={{...navBtnStyle, backgroundColor: activeTab === 'user-list' ? 'rgba(255,255,255,0.2)' : 'transparent'}}
@@ -54,7 +59,6 @@ export default function FacilityMenu_PC({
             👥 あつまれ綺麗にする人
           </button>
 
-          {/* 2. カレンダー予約（キープ） */}
           <button 
             onClick={() => { setActiveTab('calendar'); setPage('menu'); }} 
             style={{...navBtnStyle, backgroundColor: activeTab === 'calendar' ? 'rgba(255,255,255,0.2)' : 'transparent'}}
@@ -62,7 +66,6 @@ export default function FacilityMenu_PC({
             📅 キープ！この日とった！
           </button>
 
-          {/* 3. 予約確定 */}
           <button 
             onClick={() => { setActiveTab('confirm'); setPage('confirm'); }} 
             style={{...navBtnStyle, backgroundColor: activeTab === 'confirm' ? '#2d6a4f' : 'transparent'}}
@@ -70,7 +73,6 @@ export default function FacilityMenu_PC({
             ✅ これで決まり！予約確定！
           </button>
 
-          {/* 4. 予約状況・進捗 */}
           <button 
             onClick={() => { setActiveTab('schedule-manager'); setPage('menu'); }}
             style={{...navBtnStyle, backgroundColor: activeTab === 'schedule-manager' ? 'rgba(255,255,255,0.2)' : 'transparent'}}
@@ -78,15 +80,13 @@ export default function FacilityMenu_PC({
             📊 予約の状況・進捗
           </button>
 
-          {/* 5. 過去実績 */}
           <button 
             onClick={() => { setActiveTab('history'); setPage('menu'); }}
             style={{...navBtnStyle, backgroundColor: activeTab === 'history' ? 'rgba(255,255,255,0.2)' : 'transparent'}}
           >
-            📜 過去の訪問実績
+            📜 過去の訪問記録
           </button>
 
-          {/* 6. 請求明細（一番下） */}
           <button 
             onClick={() => { setActiveTab('invoice'); setPage('menu'); }}
             style={{...navBtnStyle, backgroundColor: activeTab === 'invoice' ? 'rgba(255,255,255,0.2)' : 'transparent'}}
@@ -94,8 +94,6 @@ export default function FacilityMenu_PC({
             📑 請求・利用明細
           </button>
         </nav>
-
-        {/* 🌟 サイドバー下部の「モバイル版へ戻る」ボタンエリアを削除 */}
       </aside>
 
       {/* --- 右側：メインコンテンツ --- */}
@@ -108,7 +106,8 @@ export default function FacilityMenu_PC({
           <FacilityKeepDate_PC user={user} keepDates={keepDates} bookingList={bookingList} ngDates={ngDates} setPage={setPage} refreshAllData={refreshAllData} checkDateSelectable={checkDateSelectable} />
         )}
 
-        {activeTab === 'schedule-manager' && (
+        {/* 🌟 page が 'schedule' の時もここを表示するように条件を強化 */}
+        {(activeTab === 'schedule-manager' || page === 'schedule') && (
           <FacilityScheduleManager_PC keepDates={keepDates} bookingList={bookingList} historyList={historyList} user={user} />
         )}
 
@@ -121,7 +120,7 @@ export default function FacilityMenu_PC({
                <FacilityTimeSelection_PC keepDates={keepDates} scheduleTimes={scheduleTimes} setScheduleTimes={setScheduleTimes} setPage={setPage} user={user} />
             )}
             {page === 'preview' && (
-              <FacilityFinalPreview_PC keepDates={keepDates.filter(kd => kd.facility === user.name).map(kd => kd.date)} selectedMembers={selectedMembers} scheduleTimes={scheduleTimes} setPage={setPage} finalizeBooking={finalizeBooking} />
+              <FacilityFinalPreview_PC user={user} keepDates={keepDates.filter(kd => kd.facility === user.name).map(kd => kd.date)} selectedMembers={selectedMembers} scheduleTimes={scheduleTimes} setPage={setPage} finalizeBooking={finalizeBooking} />
             )}
             {page === 'thanks' && (
               <FacilityThanks_PC user={user} setPage={setPage} />
@@ -130,10 +129,7 @@ export default function FacilityMenu_PC({
         )}
 
         {activeTab === 'invoice' && (
-          <div style={placeholderCard}>
-            <h3>📑 請求・利用明細</h3>
-            <p>管理者から発行された請求・利用明細を確認できます。</p>
-          </div>
+          <FacilityInvoice_PC historyList={historyList} bookingList={bookingList} user={user} />
         )}
 
         {activeTab === 'history' && (
@@ -144,11 +140,10 @@ export default function FacilityMenu_PC({
   );
 }
 
-// スタイル（変更なし）
+// スタイルは変更なし
 const pcLayoutStyle = { display: 'flex', height: '100vh', width: '100%', backgroundColor: '#f0f4f8', overflow: 'hidden' };
 const sidebarStyle = { width: '260px', minWidth: '260px', backgroundColor: '#2d3748', color: 'white', display: 'flex', flexDirection: 'column' };
 const sidebarHeader = { padding: '30px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)' };
 const navStyle = { flex: 1, padding: '20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' };
 const navBtnStyle = { width: '100%', padding: '12px 15px', backgroundColor: 'transparent', border: 'none', color: 'white', textAlign: 'left', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', transition: '0.2s' };
 const mainContentStyle = { flex: 1, padding: '40px', overflowY: 'auto', position: 'relative' };
-const placeholderCard = { backgroundColor: 'white', padding: '40px', borderRadius: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', textAlign: 'center' };

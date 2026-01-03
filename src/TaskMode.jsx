@@ -52,7 +52,7 @@ export default function TaskMode({
     }
   }, [facilities, activeFacility, setActiveFacility]);
 
-  // 🌟【修正】進捗計算ロジック
+  // 進捗計算ロジック
   const doneCount = allMembersInTask.filter(m => 
     historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility)
   ).length;
@@ -125,7 +125,10 @@ export default function TaskMode({
       b.id === currentBooking.id ? { ...b, members: updatedMembers } : b
     ));
 
-    if (colorNum) updateUserNotes(m.name, activeFacility, menuName);
+    // 🌟【修正】薬剤が選択された場合、colorNum（例: "8-OK"）だけを updateUserNotes に渡す
+    // これにより App.jsx 側の新ロジックで【前回薬剤】行を上書きします
+    if (colorNum) updateUserNotes(m.name, activeFacility, colorNum); 
+
     setShowMenu(null); setShowColorPicker(null);
   };
 
@@ -172,13 +175,11 @@ export default function TaskMode({
           )}
           <div style={statusRowStyle}>
             <div style={facilityNameBadge}>{activeFacility || "訪問先なし"}</div>
-            {/* 🌟【修正】表示部分の内訳にキャンセル(欠)を追加 */}
             <div style={progressTextStyle}>
                 {totalRaw}名中 / <b style={{color:'#ed32eaff'}}>{doneCount}名 完</b> / 残 {remainingCount}名 
                 {cancelCount > 0 && <span style={{color:'#ef4444'}}> / 欠 {cancelCount}名</span>}
             </div>
           </div>
-          {/* 🌟 プログレスバーの追加（任意：バーがあると進捗が直感的になります） */}
           <div style={{ width: '100%', height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', marginBottom: '8px', overflow: 'hidden' }}>
             <div style={{ width: `${progressPercent}%`, height: '100%', backgroundColor: '#ed32ea', transition: 'width 0.3s ease' }}></div>
           </div>

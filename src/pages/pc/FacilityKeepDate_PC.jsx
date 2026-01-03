@@ -6,6 +6,8 @@ export default function FacilityKeepDate_PC({
   keepDates = [], 
   bookingList = [], 
   ngDates = [], 
+  historyList = [], // 🌟 App.jsxから受け取る最新の実績
+  allUsers = [],    // 🌟 App.jsxから受け取る最新の名簿
   refreshAllData,
   setPage,
   checkDateSelectable 
@@ -25,26 +27,68 @@ export default function FacilityKeepDate_PC({
   for (let i = 0; i < firstDay; i++) days.push(null);
   for (let d = 1; d <= lastDate; d++) days.push(d);
 
-  // 日付の状態判定（スマホ版のロジックを完全再現）
+  // 🌟【最強判定】詳細なステータスラベルを取得（終了処理済・訪問済の区別）
+  const getDynamicLabel = (dateStr) => {
+    const dateSlash = dateStr.replace(/-/g, '/');
+    const booking = bookingList.find(b => b.date === dateStr && b.facility === user.name);
+    
+    // 施術履歴があるか確認
+    const finishedCount = historyList.filter(h => h.date === dateSlash && h.facility === user.name).length;
+    
+    // 履歴があるなら、その時点で「訪問済」または「終了処理済」の候補
+    if (finishedCount > 0 || booking) {
+      const cancelCount = booking?.members?.filter(m => m.status === 'cancel').length || 0;
+      const totalCount = booking?.members?.length || 0;
+
+      // 管理者が一括欠席（終了処理）を行った形跡がある場合
+      if (cancelCount > 0 && (finishedCount + cancelCount >= totalCount)) {
+        return '終了処理済';
+      }
+      // 全員分が完了または欠席で片付いている場合
+      if (totalCount > 0 && (finishedCount + cancelCount >= totalCount)) {
+        return '訪問済';
+      }
+      return booking ? '確定済' : '訪問済';
+    }
+    
+    return null;
+  };
+
+  // 🌟【最強判定】日付の最終ステータス（色の決定）
   const getStatus = (dateStr) => {
-    if (dateStr < todayStr) return 'past'; 
-    if (ngDates.includes(dateStr)) return 'ng'; 
+    const label = getDynamicLabel(dateStr);
+    
+    // 1. すでに終わった、または終わらせた形跡があれば「グレー（finished）」で確定
+    if (label === '訪問済' || label === '終了処理済') return 'finished';
+
+    // 2. 自分の予約として確定している（まだ終わっていない）
     if (bookingList.some(b => b.date === dateStr && b.facility === user.name)) return 'my-booked'; 
+
+    // 3. 過去の日付は無条件でロック（ finished 以外の過去日は past ）
+    if (dateStr < todayStr) return 'past'; 
+
+    // 4. その他の特殊状態
+    if (ngDates.includes(dateStr)) return 'ng'; 
     if (keepDates.some(k => k.date === dateStr && k.facility === user.name)) return 'keeping'; 
     if (bookingList.some(b => b.date === dateStr)) return 'other-booked'; 
     if (keepDates.some(k => k.date === dateStr && k.facility !== user.name)) return 'other-keep';
     if (checkDateSelectable && !checkDateSelectable(dateStr)) return 'outside';
+    
     return 'available';
   };
 
-  // 🌟【クラウド同期版】キープの切り替え（エラーの原因となった time を削除）
   const handleDateClick = async (day) => {
     if (!day) return;
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const status = getStatus(dateStr);
 
-    // 選択不可条件のガード
-    if (status === 'past') { alert('過去の日付は選択できません。'); return; }
+    // 🌟 finished（訪問済・終了済）は絶対に変更させない
+    if (status === 'finished') {
+      alert('この日の施術は既に完了しているため、変更できません。');
+      return;
+    }
+    
+    if (status === 'past') { alert('過去の日付は変更できません。'); return; }
     if (status === 'ng') { alert('美容師の都合により予約できない日です。'); return; }
     if (status === 'my-booked') { alert('この日は既に予約が確定しています。'); return; }
     if (status === 'other-booked' || status === 'other-keep') { alert('他の施設が予約・キープ済みです。'); return; }
@@ -52,23 +96,12 @@ export default function FacilityKeepDate_PC({
 
     try {
       if (status === 'keeping') {
-        // 🌟 削除：スマホ版と同じ match 条件
-        const { error } = await supabase
-          .from('keep_dates')
-          .delete()
-          .match({ date: dateStr, facility: user.name });
-        
-        if (error) throw error;
+        await supabase.from('keep_dates').delete().match({ date: dateStr, facility: user.name });
       } else {
-        // 🌟 追加：スマホ版と同じ payload (time を含めない)
-        const payload = { date: dateStr, facility: user.name };
-        const { error } = await supabase
-          .from('keep_dates')
-          .upsert(payload); // upsert を使用
-
-        if (error) throw error;
+        await supabase.from('keep_dates').upsert({ date: dateStr, facility: user.name });
       }
-      if (refreshAllData) refreshAllData();
+      // 🌟 クラウド更新後に全体同期を走らせる
+      if (refreshAllData) await refreshAllData();
     } catch (err) {
       console.error("Keep Toggle Error:", err);
       alert("通信に失敗しました。");
@@ -81,7 +114,6 @@ export default function FacilityKeepDate_PC({
     return `${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})`;
   };
 
-  // 現在の月の自分のキープ一覧
   const myCurrentKeeps = keepDates
     .filter(kd => kd.facility === user.name && kd.date.startsWith(`${year}-${String(month + 1).padStart(2, '0')}`))
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -109,10 +141,12 @@ export default function FacilityKeepDate_PC({
           
           const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
           const status = getStatus(dateStr);
+          const label = getDynamicLabel(dateStr);
 
           const config = {
             'keeping': { bg: '#fffbeb', border: '#f5a623', color: '#d97706', label: '選択中' },
             'my-booked': { bg: '#dcfce7', border: '#10b981', color: '#15803d', label: '確定済' },
+            'finished': { bg: '#e2e8f0', border: '#cbd5e1', color: '#64748b', label: label || '訪問済' }, 
             'ng': { bg: '#fee2e2', border: '#ef4444', color: '#ef4444', label: '×' },
             'other-booked': { bg: '#f1f5f9', border: '#cbd5e1', color: '#94a3b8', label: '予約済' },
             'other-keep': { bg: '#f1f5f9', border: '#cbd5e1', color: '#94a3b8', label: 'キープ済' },
@@ -131,16 +165,22 @@ export default function FacilityKeepDate_PC({
                 cursor: (status === 'available' || status === 'keeping') ? 'pointer' : 'default',
                 backgroundColor: style.bg,
                 border: `1px solid ${style.border}`,
+                opacity: status === 'finished' ? 0.8 : 1,
               }}
             >
               <div style={{display:'flex', justifyContent:'space-between'}}>
-                <span style={{...dayNumStyle, color: (status === 'available' || status === 'keeping' || status === 'my-booked') ? '#1e293b' : '#cbd5e1'}}>{day}</span>
+                <span style={{...dayNumStyle, color: (status === 'available' || status === 'keeping' || status === 'my-booked') ? '#1e293b' : '#94a3b8'}}>{day}</span>
                 <span style={{fontSize: '10px', fontWeight: 'bold', color: style.color}}>{style.label}</span>
               </div>
               <div style={statusTextStyle}>
-                {status === 'available' && <span style={{fontSize: '18px'}}>○</span>}
                 {status === 'keeping' && <span style={{fontSize: '18px'}}>★</span>}
                 {status === 'my-booked' && <span style={{fontSize: '12px'}}>✅</span>}
+                {status === 'finished' && (
+                  <span style={{fontSize: '12px', color: '#64748b'}}>
+                    {label === '終了処理済' ? '🚩' : '🏁'}
+                  </span>
+                )}
+                {status === 'available' && <span style={{fontSize: '18px'}}>○</span>}
               </div>
             </div>
           );
@@ -150,8 +190,8 @@ export default function FacilityKeepDate_PC({
       <footer style={footerAreaStyle}>
         <div style={legendArea}>
            <div style={legendItem}><span style={{...dot, backgroundColor:'#fffbeb', border:'1px solid #f5a623'}}></span> 選択中</div>
-           <div style={legendItem}><span style={{...dot, backgroundColor:'#dcfce7', border:'1px solid #10b981'}}></span> 予約確定済み</div>
-           <div style={legendItem}><span style={{...dot, backgroundColor:'#f1f5f9', border:'1px solid #cbd5e1'}}></span> 選択不可</div>
+           <div style={legendItem}><span style={{...dot, backgroundColor:'#dcfce7', border:'1px solid #10b981'}}></span> 予約確定済</div>
+           <div style={legendItem}><span style={{...dot, backgroundColor:'#e2e8f0', border:'1px solid #cbd5e1'}}></span> 訪問済/終了済</div>
         </div>
 
         {myCurrentKeeps.length > 0 && (

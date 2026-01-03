@@ -1,46 +1,56 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../supabase'; 
-import TaskConfirmMode from '../../TaskConfirmMode'; 
+import { supabase } from '../../supabase';
+// 🌟 司令塔(App.jsx)の仕様に合わせたインポート
+import TaskConfirmMode from '../../TaskConfirmMode';
 
-export default function TaskMode_PC({ 
-  bookingList = [], 
-  historyList = [], 
-  setHistoryList, 
-  setBookingList, 
-  setPage, 
+export default function TaskMode_PC({
+  bookingList = [],
+  historyList = [],
+  setHistoryList,
+  setBookingList,
+  setPage,
   users = [],
-  menuPrices = {}, 
+  menuPrices = {},
   activeFacility,  
   setActiveFacility,
   colorList = [],
   updateUserNotes,
-  user
+  user,
+  refreshAllData // 🌟 App.jsxからデータ更新用関数を受け取る
 }) {
   const yetListRef = useRef(null);
   const doneListRef = useRef(null);
-  const [showConfirmPopup, setShowConfirmPopup] = useState(false); 
+  const finishBtnRef = useRef(null);
+  const [showConfirmPopup, setShowConfirmPopup] = useState(false);
   
+  // 日付形式の不一致を解消
+  const formatDateForCompare = (dateStr) => {
+    if (!dateStr) return "";
+    return dateStr.replace(/-/g, '/'); 
+  };
+
   const getTodayStr = () => {
     const d = new Date();
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
   };
   const todaySlash = getTodayStr();
   
-  const [leftSortBy, setLeftSortBy] = useState("room"); 
-  const [rightSortBy, setRightSortBy] = useState("room"); 
-  const [isRightDesc, setIsRightDesc] = useState(false); 
+  const [leftSort, setLeftSort] = useState("room");
+  const [rightSort, setRightSort] = useState("room");
+  const [showColorTypePicker, setShowColorTypePicker] = useState(null);
+  const [showColorNumberPicker, setShowColorNumberPicker] = useState(null);
+  const [pendingMenuName, setPendingMenuName] = useState("");
+  const [showReset, setShowReset] = useState(null);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [addSearchSort, setAddSearchSort] = useState("room");
 
-  const [showMenu, setShowMenu] = useState(null); 
-  const [showColorPicker, setShowColorPicker] = useState(null);
-  const [showReset, setShowReset] = useState(null); 
-  const [showAddList, setShowAddList] = useState(false); 
-  const [saveMessage, setSaveMessage] = useState("");
-
-  const facilities = Array.from(new Set(
-    bookingList
-      .filter(b => (b.date || "").replace(/-/g, '/') === todaySlash)
-      .map(b => b.facility)
-  ));
+  // 現在の施設の予約を特定
+  const currentBooking = bookingList.find(b =>
+    b.facility === activeFacility && formatDateForCompare(b.date) === todaySlash
+  );
+  
+  const allMembersInTask = currentBooking?.members || [];
+  const facilities = Array.from(new Set(bookingList.filter(b => formatDateForCompare(b.date) === todaySlash).map(b => b.facility)));
 
   useEffect(() => {
     if (!activeFacility && facilities.length > 0) {
@@ -48,179 +58,219 @@ export default function TaskMode_PC({
     }
   }, [facilities, activeFacility, setActiveFacility]);
 
-  const currentBooking = bookingList.find(b => 
-    b.facility === activeFacility && (b.date || "").replace(/-/g, '/') === todaySlash
-  );
-  
-  const allMembersInTask = currentBooking?.members || [];
+  // 進捗ステータス判定
+  const doneMembers = allMembersInTask.filter(m => historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility));
+  const cancelMembers = allMembersInTask.filter(m => m.status === 'cancel');
+  const yetMembers = allMembersInTask.filter(m => !historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility) && m.status !== 'cancel');
 
-  const doneCount = allMembersInTask.filter(m => 
-    historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility)
-  ).length;
-  const cancelCount = allMembersInTask.filter(m => m.status === 'cancel').length;
   const totalRaw = allMembersInTask.length;
-  const remainingCount = totalRaw - doneCount - cancelCount;
-  const isFinishedAll = totalRaw > 0 && remainingCount === 0;
+  const doneCount = doneMembers.length;
+  const cancelCount = cancelMembers.length;
+  const remainingCount = yetMembers.length;
 
-  const handleFinalSave = async () => {
-    try {
-      setSaveMessage("クラウドに保存中...");
-      if (currentBooking) {
-        const { error } = await supabase.from('bookings').upsert(currentBooking, { onConflict: 'id' });
-        if (error) throw error;
-      }
-      setSaveMessage("保存完了！");
-      setTimeout(() => setSaveMessage(""), 2000);
-    } catch (error) {
-      setSaveMessage("保存失敗");
+  const isAllFinished = totalRaw > 0 && (doneCount + cancelCount === totalRaw);
+
+  useEffect(() => {
+    if (isAllFinished && finishBtnRef.current) {
+      finishBtnRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
+  }, [isAllFinished]);
+
+  const sortFn = (type) => (a, b) => {
+    if (type === "room") return String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
+    return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
   };
 
-  const scrollReset = () => {
-    if (yetListRef.current) yetListRef.current.scrollTop = 0;
-    if (doneListRef.current) doneListRef.current.scrollTop = 0;
+  const handleMemberClick = (m) => {
+    const hopeMenus = m.menus || [];
+    if (hopeMenus.includes('カラー')) setShowColorTypePicker(m);
+    else completeTask(m, hopeMenus.join('＆') || 'カット');
   };
 
   const completeTask = async (m, finalMenu, colorNum = "") => {
-    if (typeof setHistoryList !== 'function') return;
-    const price = menuPrices[finalMenu] || 0;
     const menuName = finalMenu + (colorNum ? ` ${colorNum}` : "");
+    const price = menuPrices[finalMenu] || menuPrices[finalMenu.replace(/（.*）/, "")] || 0;
 
     setHistoryList(prev => [...prev, {
-      date: todaySlash, facility: activeFacility, room: m.room, 
+      date: todaySlash, facility: activeFacility, room: m.room,
       name: m.name, kana: m.kana, menu: menuName, price: price, status: 'done'
     }]);
 
-    const updatedMembers = allMembersInTask.map(member => 
-      member.name === m.name ? { ...member, status: 'done' } : member
-    );
-    const updatedBooking = { ...currentBooking, members: updatedMembers };
-    
-    setBookingList(prev => prev.map(b => b.id === currentBooking.id ? updatedBooking : b));
-    await supabase.from('bookings').upsert(updatedBooking, { onConflict: 'id' });
-
-    if (colorNum && typeof updateUserNotes === 'function') {
-      updateUserNotes(m.name, activeFacility, menuName);
-    }
-    setShowMenu(null); setShowColorPicker(null);
-    setTimeout(scrollReset, 50);
+    const updatedMembers = allMembersInTask.map(member => member.name === m.name ? { ...member, status: 'done' } : member);
+    await updateBookingInCloud(updatedMembers);
+    if (colorNum) updateUserNotes(m.name, activeFacility, colorNum);
+    closeAllModals();
   };
 
-  const handleCancelMember = async (memberName) => {
-    const updatedMembers = allMembersInTask.map(m => m.name === memberName ? { ...m, status: 'cancel' } : m);
-    const updatedBooking = { ...currentBooking, members: updatedMembers };
-    setBookingList(prev => prev.map(b => b.id === currentBooking.id ? updatedBooking : b));
-    await supabase.from('bookings').upsert(updatedBooking, { onConflict: 'id' });
-    setTimeout(scrollReset, 50);
+  const handleCancel = async (e, m) => {
+    e.stopPropagation();
+    const updatedMembers = allMembersInTask.map(member => member.name === m.name ? { ...member, status: 'cancel' } : member);
+    await updateBookingInCloud(updatedMembers);
   };
 
-  const handleResetMember = async (targetMember) => {
-    setHistoryList(prev => prev.filter(h => !(h.name === targetMember.name && h.date === todaySlash && h.facility === activeFacility)));
-    const updatedMembers = allMembersInTask.map(m => m.name === targetMember.name ? { ...m, status: 'yet' } : m);
-    const updatedBooking = { ...currentBooking, members: updatedMembers };
-    setBookingList(prev => prev.map(b => b.id === currentBooking.id ? updatedBooking : b));
-    await supabase.from('history').delete().match({ name: targetMember.name, date: todaySlash, facility: activeFacility });
-    await supabase.from('bookings').upsert(updatedBooking, { onConflict: 'id' });
+  const handleRestore = async (m) => {
+    setHistoryList(prev => prev.filter(h => !(h.name === m.name && h.date === todaySlash && h.facility === activeFacility)));
+    await supabase.from('history').delete().match({ name: m.name, date: todaySlash, facility: activeFacility });
+    const updatedMembers = allMembersInTask.map(member => member.name === m.name ? { ...member, status: 'yet' } : member);
+    await updateBookingInCloud(updatedMembers);
     setShowReset(null);
-    setTimeout(scrollReset, 50);
   };
 
-  const toggleRightSort = (key) => {
-    if (rightSortBy === key) setIsRightDesc(!isRightDesc);
-    else { setRightSortBy(key); setIsRightDesc(false); }
-    setTimeout(scrollReset, 50);
+  const updateBookingInCloud = async (updatedMembers) => {
+    const updatedBooking = { ...currentBooking, members: updatedMembers };
+    setBookingList(prev => prev.map(b => b.id === currentBooking.id ? updatedBooking : b));
+    await supabase.from('bookings').upsert(updatedBooking);
+  };
+
+  const closeAllModals = () => {
+    setShowColorTypePicker(null); setShowColorNumberPicker(null); setShowReset(null);
   };
 
   return (
     <div style={containerStyle}>
+      {/* ヘッダーパネル */}
       <div style={headerPanelStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h2 style={{ margin: 0, color: '#1e3a8a' }}>✂️ 現場タスク入力</h2>
-            <div style={tabGroup}>
-              {facilities.map(f => (
-                <button key={f} onClick={() => setActiveFacility(f)} 
-                  style={{...facilityTab, backgroundColor: activeFacility===f?'#1e3a8a':'#f1f5f9', color: activeFacility===f?'white':'#64748b'}}>{f}</button>
-              ))}
+            <h2 style={{ margin: 0, color: '#1e3a8a' }}>✂️ 現場タスク入力 (PC)</h2>
+            <div style={progressValue}>
+              {totalRaw}名中 / <span style={{color:'#10b981'}}>{doneCount}名 完了</span> / 残り {remainingCount}名 / <span style={{color:'#ef4444'}}>キャンセル {cancelCount}名</span>
             </div>
           </div>
-          <div style={progressContainer}>
-            <span style={progressValue}>
-                {totalRaw}名中 / <span style={{color:'#10b981', fontWeight:'bold'}}>{doneCount}名 完了</span> / 残 {remainingCount}名
-                {cancelCount > 0 && <span style={{color:'#ef4444'}}> / 欠 {cancelCount}名</span>}
-            </span>
-            <div style={progressBarBg}><div style={{...progressBarFill, width: totalRaw > 0 ? `${((doneCount + cancelCount)/totalRaw)*100}%` : '0%'}}></div></div>
-            <button onClick={handleFinalSave} style={saveBtn}>クラウド保存</button>
+          <div style={{display:'flex', gap:'10px'}}>
+             <button onClick={() => setShowAddMember(true)} style={addMemberBtn}>＋ 当日追加</button>
+             <button onClick={() => setPage('admin-top')} style={saveBtn}>一時中断</button>
           </div>
         </div>
       </div>
 
       <div style={mainLayout}>
+        {/* 左カラム：未完了 */}
         <section style={columnStyle}>
-          <div style={columnHeader}><h3>⏳ 1. 次に施術する人</h3></div>
+          <div style={columnHeader}>
+            <h3>⏳ 施術待ち</h3>
+            <div style={sortTabGroup}>
+              <button onClick={()=>setLeftSort("room")} style={sortTab(leftSort==="room")}>部屋順</button>
+              <button onClick={()=>setLeftSort("name")} style={sortTab(leftSort==="name")}>名前順</button>
+            </div>
+          </div>
           <div style={scrollArea} ref={yetListRef}>
-            {allMembersInTask.filter(m => !historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility) && m.status !== 'cancel')
-              .sort((a, b) => leftSortBy === "room" ? String(a.room).localeCompare(String(b.room), undefined, { numeric: true }) : (a.kana || a.name).localeCompare(b.kana || b.name, 'ja'))
-              .map((m, idx) => (
-                <div key={idx} onClick={() => setShowMenu(m)} style={cardStyle}>
-                  <div style={cardTopStyle}><span style={roomNumStyle}>{m.room}号室</span></div>
+            {yetMembers.sort(sortFn(leftSort)).map((m, idx) => (
+              <div key={idx} onClick={() => handleMemberClick(m)} style={cardStyle}>
+                <div style={{flex:1}}>
+                  <div style={roomNumStyle}>{m.room}号室</div>
                   <div style={nameStyle}>{m.name} 様</div>
-                  <button onClick={(e) => {e.stopPropagation(); handleCancelMember(m.name)}} style={inlineCancelBtn}>キャンセル</button>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {m.menus?.map((menu, i) => <span key={i} style={hopeMenuBadgeStyle}>{menu}</span>)}
+                  </div>
                 </div>
+                <button onClick={(e) => handleCancel(e, m)} style={inlineCancelBtn}>キャンセル</button>
+              </div>
             ))}
           </div>
         </section>
 
+        {/* 右カラム：完了 */}
         <section style={{...columnStyle, backgroundColor: '#f8fafc', borderLeft: '2px solid #e2e8f0'}}>
-          <div style={columnHeader}><h3>✅ 2. 完了・キャンセル済み</h3></div>
-          <div style={scrollArea} ref={doneListRef}>
-            {allMembersInTask.filter(m => historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility) || m.status === 'cancel')
-              .sort((a, b) => {
-                let result = String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
-                return isRightDesc ? -result : result;
-              })
-              .map((m, idx) => (
-                <div key={idx} onClick={() => setShowReset(m)} style={doneCardStyle}>
-                  <div><b>{m.room}号室 {m.name} 様</b></div>
-                  <span style={badgeStyle(true, m.status === 'cancel')}>{m.status === 'cancel' ? '欠席' : '完了'}</span>
-                </div>
-            ))}
+          <div style={columnHeader}>
+            <h3>✅ 完了・キャンセル</h3>
+            <div style={sortTabGroup}>
+              <button onClick={()=>setRightSort("room")} style={sortTab(rightSort==="room")}>部屋順</button>
+              <button onClick={()=>setRightSort("name")} style={sortTab(rightSort==="name")}>名前順</button>
+            </div>
           </div>
-          {isFinishedAll && totalRaw > 0 && ( 
-            <button onClick={() => setShowConfirmPopup(true)} style={finishBtn}>お仕事お疲れさまでした！ (確認へ)</button> 
-          )}
+          <div style={scrollArea} ref={doneListRef}>
+            {[...doneMembers, ...cancelMembers].sort(sortFn(rightSort)).map((m, idx) => {
+              const hist = historyList.find(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility);
+              const isCancel = m.status === 'cancel';
+              return (
+                <div key={idx} onClick={() => setShowReset(m)} style={{...doneCardStyle, borderColor: isCancel ? '#fecaca' : '#10b981'}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:'12px', color:'#64748b'}}>{m.room}号室</div>
+                    <b>{m.name} 様</b>
+                    {hist && <div style={doneMenuDetail}>{hist.menu}</div>}
+                  </div>
+                  <span style={{...badgeStyle, backgroundColor: isCancel ? '#ef4444' : '#10b981'}}>
+                    {isCancel ? '欠席' : '完了'}
+                  </span>
+                </div>
+              );
+            })}
+            {isAllFinished && (
+              <div ref={finishBtnRef} style={{ padding: '20px 0' }}>
+                <button onClick={() => setShowConfirmPopup(true)} style={finishBtnStyle}>お疲れさまでした♡</button>
+              </div>
+            )}
+          </div>
         </section>
       </div>
 
-      {/* 🌟 完了確認ポップアップ（外側クリックで閉じる機能付き） */}
+      {/* 🌟 ポップアップの中で「消さない仕様」のモバイル版画面を呼び出す */}
       {showConfirmPopup && (
         <div style={fullOverlayStyle} onClick={() => setShowConfirmPopup(false)}>
           <div style={popupWrapperStyle} onClick={e => e.stopPropagation()}>
-            <TaskConfirmMode 
-              historyList={historyList} 
-              bookingList={bookingList} 
-              facilityName={activeFacility} 
-              user={user} 
-              setPage={(target) => target === 'task' ? setShowConfirmPopup(false) : setPage(target)}
+            <TaskConfirmMode
+              historyList={historyList}
+              bookingList={bookingList}
+              facilityName={activeFacility}
+              user={user}
+              // モバイル版の戻る処理と、完了後の遷移先を管理
+              setPage={(target) => {
+                if (target === 'task') setShowConfirmPopup(false);
+                else setPage(target); // 完了時は admin-history へ
+              }}
+              // 🌟 ここが重要：bookingsテーブルから「削除」せず、最新化するだけ
               completeFacilityBooking={async () => {
-                const todayISO = new Date().toLocaleDateString('sv-SE');
-                await supabase.from('bookings').delete().match({ facility: activeFacility, date: todayISO });
+                if (refreshAllData) await refreshAllData();
                 setShowConfirmPopup(false);
                 setPage('admin-history');
-              }} 
+              }}
             />
           </div>
         </div>
       )}
 
-      {saveMessage && <div style={toastStyle}>{saveMessage}</div>}
+      {/* --- モーダル・ピック類（以下省略せず維持） --- */}
+      {showAddMember && (
+        <div style={overlayStyle} onClick={() => setShowAddMember(false)}>
+          <div style={{...modalStyle, width:'500px', maxHeight:'80vh', display:'flex', flexDirection:'column'}} onClick={e => e.stopPropagation()}>
+            <h3 style={{margin:'0 0 15px'}}>当日追加</h3>
+            <div style={{flex:1, overflowY:'auto', textAlign:'left'}}>
+              {users.filter(u => u.facility === activeFacility && !allMembersInTask.some(m => m.name === u.name))
+                .sort(sortFn(addSearchSort)).map(u => (
+                <div key={u.id} style={addSearchRow}>
+                  <span>{u.room} {u.name} 様</span>
+                  <button onClick={async () => {
+                    const updatedMembers = [...allMembersInTask, { ...u, status: 'yet', menus: ['カット'] }];
+                    await updateBookingInCloud(updatedMembers);
+                  }} style={addPlusBtn}>＋</button>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setShowAddMember(false)} style={modalCloseBtn}>閉じる</button>
+          </div>
+        </div>
+      )}
 
-      {showMenu && (
-        <div style={overlayStyle} onClick={() => setShowMenu(null)}>
+      {showColorTypePicker && (
+        <div style={overlayStyle} onClick={() => setShowColorTypePicker(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
-            <h3 style={{marginTop:0, color:'#1e3a8a'}}>{showMenu.name} 様</h3>
-            <button onClick={() => completeTask(showMenu, "カット")} style={modalMainBtn}>✅ カット完了</button>
-            <button onClick={() => setShowMenu(null)} style={modalCloseBtn}>閉じる</button>
+            <h3 style={{color:'#1e3a8a'}}>{showColorTypePicker.name} 様</h3>
+            <div style={modalGrid}>
+              <button onClick={() => { setPendingMenuName(showColorTypePicker.menus.join('＆').replace('カラー','カラー(リ)')); setShowColorNumberPicker(showColorTypePicker); setShowColorTypePicker(null); }} style={menuChoiceBtn}>🎨 リタッチ</button>
+              <button onClick={() => { setPendingMenuName(showColorTypePicker.menus.join('＆').replace('カラー','カラー(全)')); setShowColorNumberPicker(showColorTypePicker); setShowColorTypePicker(null); }} style={menuChoiceBtn}>🌈 全体</button>
+            </div>
+            <button onClick={() => setShowColorTypePicker(null)} style={modalCloseBtn}>閉じる</button>
+          </div>
+        </div>
+      )}
+
+      {showColorNumberPicker && (
+        <div style={overlayStyle} onClick={() => setShowColorNumberPicker(null)}>
+          <div style={{...modalStyle, width: '550px'}} onClick={e => e.stopPropagation()}>
+            <p style={{fontWeight:'bold'}}>{pendingMenuName}</p>
+            <div style={colorGrid}>{colorList.map(c => <button key={c} onClick={() => completeTask(showColorNumberPicker, pendingMenuName, c)} style={colorBtnStyle}>{c}</button>)}</div>
+            <button onClick={() => { setShowColorNumberPicker(null); setShowColorTypePicker(showColorNumberPicker); }} style={modalCloseBtn}>戻る</button>
           </div>
         </div>
       )}
@@ -228,10 +278,9 @@ export default function TaskMode_PC({
       {showReset && (
         <div style={overlayStyle} onClick={() => setShowReset(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
-            <h3 style={{color:'#1e3a8a'}}>ステータス変更</h3>
-            <p>{showReset.name} 様を未完了に戻しますか？</p>
-            <button onClick={() => handleResetMember(showReset)} style={modalResetBtn}>未完了に戻す</button>
-            <button onClick={() => setShowReset(null)} style={modalCloseBtn}>閉じる</button>
+            <h3 style={{color:'#1e3a8a'}}>{showReset.name} 様</h3>
+            <button onClick={() => handleRestore(showReset)} style={modalRestoreBtn}>未完了に戻す</button>
+            <button onClick={() => setShowReset(null)} style={modalCloseBtn}>キャンセル</button>
           </div>
         </div>
       )}
@@ -239,33 +288,36 @@ export default function TaskMode_PC({
   );
 }
 
-// 🎨 スタイル設定
-const containerStyle = { display: 'flex', flexDirection: 'column', height: '100%', gap: '10px', overflow:'hidden' };
-const headerPanelStyle = { backgroundColor: 'white', padding: '15px 25px', borderRadius: '15px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)', flexShrink: 0 };
-const mainLayout = { display: 'flex', flex: 1, backgroundColor: 'white', borderRadius: '15px', overflow: 'hidden', border: '1px solid #e2e8f0', minHeight: 0 };
-const columnStyle = { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 };
-const columnHeader = { padding: '15px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', flexShrink: 0 };
-const scrollArea = { flex: 1, overflowY: 'auto', padding: '15px', scrollBehavior: 'smooth' };
-const progressContainer = { textAlign: 'right', display:'flex', alignItems:'center', gap:'15px' };
-const progressValue = { fontSize: '14px', fontWeight: 'bold', color: '#1e3a8a', whiteSpace:'nowrap' };
-const progressBarBg = { width: '120px', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' };
-const progressBarFill = { height: '100%', backgroundColor: '#10b981', transition: '0.3s' };
-const tabGroup = { display: 'flex', gap: '5px', marginTop:'8px' };
-const facilityTab = { padding: '6px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize:'12px', fontWeight: 'bold' };
-const saveBtn = { padding: '8px 20px', backgroundColor: '#1e3a8a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize:'13px' };
-const cardStyle = { padding: '15px', borderRadius: '12px', border: '1px solid #cbd5e1', marginBottom: '10px', cursor: 'pointer', transition: '0.2s', backgroundColor:'white' };
-const doneCardStyle = { display:'flex', justifyContent:'space-between', alignItems:'center', padding: '12px 15px', borderRadius: '10px', border: '2px solid #10b981', marginBottom: '8px', cursor: 'pointer', backgroundColor:'white' };
-const cardTopStyle = { display: 'flex', justifyContent: 'space-between', marginBottom: '5px' };
-const roomNumStyle = { fontSize: '14px', fontWeight: 'bold', color: '#64748b' };
-const nameStyle = { fontSize: '18px', fontWeight: 'bold', color: '#1e293b', marginBottom: '5px' };
-const inlineCancelBtn = { marginTop: '10px', width: '100%', padding: '6px', backgroundColor: '#fff', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '6px', fontSize: '11px', cursor: 'pointer' };
-const badgeStyle = (done, cancel) => ({ fontSize: '10px', padding: '2px 8px', borderRadius: '4px', backgroundColor: cancel ? '#ef4444' : '#10b981', color: 'white' });
-const finishBtn = { margin: '15px', padding: '12px', backgroundColor: '#ed32ea', color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', flexShrink: 0 };
-const fullOverlayStyle = { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 10000, display: 'flex', justifyContent: 'center', alignItems: 'center', backdropFilter: 'blur(4px)' };
-const popupWrapperStyle = { backgroundColor: 'white', width: '90%', maxWidth: '600px', height: '90vh', borderRadius: '32px', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' };
-const overlayStyle = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 10001, display: 'flex', justifyContent: 'center', alignItems: 'center' };
-const modalStyle = { backgroundColor: 'white', padding: '25px', borderRadius: '20px', width: '400px', textAlign: 'center' };
-const modalMainBtn = { width: '100%', padding: '12px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' };
-const modalCloseBtn = { marginTop: '10px', padding: '10px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' };
-const modalResetBtn = { width: '100%', padding: '12px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' };
-const toastStyle = { position: 'fixed', bottom: '40px', right: '40px', backgroundColor: '#1e3a8a', color: 'white', padding: '15px 30px', borderRadius: '50px', fontWeight: 'bold', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' };
+// 🎨 スタイル設定（変更なし）
+const finishBtnStyle = { width: '100%', padding: '25px', backgroundColor: '#ff85d0', color: 'white', border: 'none', borderRadius: '20px', fontSize: '24px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 10px 20px rgba(255, 133, 208, 0.3)', transition: '0.3s' };
+const headerPanelStyle = { backgroundColor:'white', padding:'15px 25px', borderBottom:'1px solid #e2e8f0' };
+const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', backgroundColor:'#f8fafc' };
+const mainLayout = { display:'flex', flex:1, overflow:'hidden', padding:'10px', gap:'10px' };
+const columnStyle = { flex:1, display:'flex', flexDirection:'column', backgroundColor:'white', borderRadius:'12px', boxShadow:'0 2px 5px rgba(0,0,0,0.05)' };
+const columnHeader = { padding:'10px 15px', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center' };
+const scrollArea = { flex:1, overflowY:'auto', padding:'10px', scrollBehavior: 'smooth' };
+const cardStyle = { display:'flex', alignItems:'center', padding:'15px', borderRadius:'10px', border:'1px solid #e2e8f0', marginBottom:'10px', cursor:'pointer', backgroundColor:'#fff' };
+const doneCardStyle = { display:'flex', padding:'12px', border:'2px solid', marginBottom:'8px', borderRadius:'10px', backgroundColor:'#fff', cursor:'pointer' };
+const inlineCancelBtn = { padding:'6px 12px', backgroundColor:'#fff', color:'#ef4444', border:'1px solid #ef4444', borderRadius:'6px', fontSize:'11px', fontWeight:'bold', cursor:'pointer' };
+const addMemberBtn = { padding:'8px 20px', backgroundColor:'#1e3a8a', color:'white', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer' };
+const addSearchRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px', borderBottom:'1px solid #f1f5f9' };
+const addPlusBtn = { width:'32px', height:'32px', borderRadius:'50%', border:'none', backgroundColor:'#3b82f6', color:'white', fontWeight:'bold', cursor:'pointer' };
+const modalRestoreBtn = { width:'100%', padding:'15px', backgroundColor:'#10b981', color:'white', border:'none', borderRadius:'12px', fontWeight:'bold', cursor:'pointer' };
+const doneMenuDetail = { fontSize:'12px', color:'#1e40af', backgroundColor:'#eff6ff', padding:'2px 6px', borderRadius:'4px', marginTop:'4px', display:'inline-block' };
+const sortTabGroup = { display:'flex', gap:'4px' };
+const sortTab = (active) => ({ padding:'4px 10px', fontSize:'11px', borderRadius:'4px', border:'1px solid #cbd5e1', backgroundColor: active ? '#1e3a8a' : '#fff', color: active ? '#fff' : '#64748b', cursor:'pointer' });
+const progressValue = { fontSize:'14px', fontWeight:'bold', marginTop:'5px' };
+const badgeStyle = { color:'white', padding:'2px 8px', borderRadius:'4px', fontSize:'12px', height:'fit-content' };
+const nameStyle = { fontSize:'18px', fontWeight:'bold' };
+const hopeMenuBadgeStyle = { fontSize:'11px', padding:'2px 6px', backgroundColor:'#f1f5f9', color:'#475569', borderRadius:'4px' };
+const overlayStyle = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.5)', zIndex: 100, display:'flex', justifyContent:'center', alignItems:'center' };
+const modalStyle = { backgroundColor:'white', padding:'25px', borderRadius:'20px', width:'400px', textAlign:'center' };
+const modalGrid = { display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginTop:'15px' };
+const menuChoiceBtn = { padding:'20px 10px', borderRadius:'12px', border:'2px solid #e2e8f0', fontWeight:'bold', cursor:'pointer' };
+const colorGrid = { display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:'8px', marginTop:'15px' };
+const colorBtnStyle = { padding:'12px 2px', border:'1px solid #cbd5e1', borderRadius:'6px', cursor:'pointer' };
+const modalCloseBtn = { marginTop:'10px', width:'100%', padding:'10px', border:'none', color:'#64748b', cursor:'pointer' };
+const saveBtn = { padding:'8px 20px', backgroundColor:'#64748b', color:'white', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer' };
+const roomNumStyle = { fontSize:'12px', color:'#64748b' };
+const fullOverlayStyle = { position:'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 10000, display:'flex', justifyContent:'center', alignItems:'center', backdropFilter: 'blur(4px)' };
+const popupWrapperStyle = { backgroundColor: 'white', width: '90%', maxWidth: '600px', height: '90vh', borderRadius: '32px', overflowY: 'auto' };

@@ -1,64 +1,51 @@
 import React, { useState } from 'react';
 
 export default function FacilityVisitHistory_PC({ historyList = [], bookingList = [], user }) {
-  const [currentViewDate, setCurrentViewDate] = useState(new Date());
-  const [innerSortBy, setInnerSortBy] = useState('room'); 
-  const [selectedVisit, setSelectedVisit] = useState(null);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedVisitKey, setSelectedVisitKey] = useState(null); 
+  const [detailSortBy, setDetailSortBy] = useState("room"); 
 
-  // --- 月別切り替えロジック ---
-  const changeViewMonth = (offset) => {
-    setCurrentViewDate(new Date(currentViewDate.getFullYear(), currentViewDate.getMonth() + offset, 1));
+  const changeMonth = (offset) => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1));
+    setSelectedVisitKey(null);
   };
 
-  const currentMonthKey = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth() + 1).padStart(2, '0')}`;
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth() + 1;
+  const monthKey = `${year}/${month.toString().padStart(2, '0')}`;
 
-  // 🌟 1. この施設だけの施術データを抽出（スマホ版共通）
-  const myFacilityHistory = historyList.filter(h => h.facility === user?.name);
-
-  // 🌟 2. 日付ごとにグループ化
-  const groupedData = myFacilityHistory.reduce((acc, item) => {
-    const date = item.date; // "2026/01/01" または "2026-01-01"
-    const standardDate = date.replace(/\//g, '-');
-    if (!acc[standardDate]) {
-      acc[standardDate] = { count: 0, staff: '三土手', members: [] }; 
-    }
-    acc[standardDate].count += 1;
-    acc[standardDate].members.push({ ...item, type: 'done' });
-    return acc;
-  }, {});
-
-  // 🌟 3. 現在の月だけにフィルタリングして日付順（降順）にソート
-  const sortedDates = Object.keys(groupedData)
-    .filter(date => date.startsWith(currentMonthKey))
-    .sort((a, b) => b.localeCompare(a));
-
-  const displayData = sortedDates.map(date => ({
-    date: date,
-    count: groupedData[date].count,
-    staff: groupedData[date].staff,
-    members: groupedData[date].members
-  }));
-
-  // 🌟 4. 名簿の並べ替えロジック（スマホ版を継承）
-  const sortMembers = (visitItem) => {
-    const targetDateISO = visitItem.date.replace(/\//g, '-');
-    const bookingForDay = bookingList.find(b => b.date === targetDateISO && b.facility === user?.name);
-    const cancelMembers = bookingForDay?.members?.filter(m => m.status === 'cancel').map(m => ({
-        ...m,
-        type: 'cancel',
-        menu: 'キャンセル'
-    })) || [];
-
-    const allMembersInDetail = [...visitItem.members, ...cancelMembers];
-
-    return allMembersInDetail.sort((a, b) => {
-      if (innerSortBy === 'room') {
-        return a.room.toString().localeCompare(b.room.toString(), undefined, { numeric: true });
-      } else {
-        const nameA = a.kana || a.name;
-        const nameB = b.kana || b.name;
-        return nameA.localeCompare(nameB, 'ja');
+  // 🌟 この施設だけのデータを抽出し、日付ごとに集計
+  const monthlyVisits = historyList
+    .filter(item => item.facility === user?.name && item.date.startsWith(monthKey))
+    .reduce((acc, h) => {
+      const key = `${h.date}-${h.facility}`;
+      if (!acc[key]) {
+        acc[key] = {
+          date: h.date, facility: h.facility, count: 0, members: []
+        };
       }
+      acc[key].members.push(h);
+      acc[key].count += 1;
+      return acc;
+    }, {});
+
+  const visitList = Object.values(monthlyVisits).sort((a, b) => b.date.localeCompare(a.date));
+  const currentVisit = visitList.find(v => `${v.date}-${v.facility}` === selectedVisitKey);
+
+  // 欠席（キャンセル）メンバーの特定
+  const cancelMembers = (() => {
+    if (!currentVisit) return [];
+    const targetDateISO = currentVisit.date.replace(/\//g, '-');
+    const bookingForDay = bookingList.find(b => b.date === targetDateISO && b.facility === user?.name);
+    return bookingForDay?.members?.filter(m => m.status === 'cancel') || [];
+  })();
+
+  const getSortedMembers = (members) => {
+    return [...members].sort((a, b) => {
+      if (detailSortBy === "room") {
+        return a.room.toString().localeCompare(b.room.toString(), undefined, { numeric: true });
+      }
+      return (a.kana || a.name || "").localeCompare(b.kana || b.name || "", 'ja');
     });
   };
 
@@ -67,113 +54,123 @@ export default function FacilityVisitHistory_PC({ historyList = [], bookingList 
       <header style={headerStyle}>
         <div>
           <h2 style={{margin:0, color: '#2d6a4f'}}>📜 過去の訪問実績</h2>
-          <p style={{fontSize: '14px', color: '#666', marginTop: '5px'}}>
-            これまでの施術完了データを月ごとに確認できます。
-          </p>
+          <p style={{fontSize:'14px', color:'#64748b'}}>施設内での施術実績と欠席状況を確認できます</p>
         </div>
-
-        {/* 🌟 月別ナビゲーション（ScheduleManager_PCと共通デザイン） */}
         <div style={monthNavStyle}>
-          <button onClick={() => changeViewMonth(-1)} style={navBtn}>◀</button>
-          <span style={monthLabel}>{currentViewDate.getFullYear()}年 {currentViewDate.getMonth() + 1}月</span>
-          <button onClick={() => changeViewMonth(1)} style={navBtn}>▶</button>
+          <button onClick={() => changeMonth(-1)} style={monthBtnStyle}>◀ 前月</button>
+          <div style={monthLabelStyle}>{year}年 {month}月</div>
+          <button onClick={() => changeMonth(1)} style={monthBtnStyle}>次月 ▶</button>
         </div>
       </header>
 
-      {/* 🌟 履歴カードのグリッド表示 */}
-      <div style={historyGrid}>
-        {displayData.length > 0 ? (
-          displayData.map((item, i) => (
-            <div key={i} style={historyCardStyle} onClick={() => setSelectedVisit(item)}>
-              <div style={dateHeaderStyle}>
-                <span style={{fontSize: '20px', fontWeight: 'bold'}}>{item.date.replace(/-/g, '/')}</span>
-                <span style={staffBadgeStyle}>担当: {item.staff}</span>
+      <div style={contentWrapperStyle}>
+        {/* --- 左側：日付リスト --- */}
+        <div style={sidebarAreaStyle}>
+          <div style={listHeader}>今月の訪問: {visitList.length} 件</div>
+          <div style={scrollArea}>
+            {visitList.map((v, i) => (
+              <div key={i} onClick={() => setSelectedVisitKey(`${v.date}-${v.facility}`)}
+                style={{
+                  ...visitCardStyle, 
+                  backgroundColor: selectedVisitKey === `${v.date}-${v.facility}` ? '#f0fdf4' : 'white', 
+                  borderLeft: selectedVisitKey === `${v.date}-${v.facility}` ? '6px solid #2d6a4f' : '6px solid transparent'
+                }}>
+                <div style={{fontWeight:'bold'}}>{v.date.split('/')[2]}日 ({['日','月','火','水','木','金','土'][new Date(v.date).getDay()]})</div>
+                <div style={{fontSize:'15px', fontWeight:'bold', margin:'4px 0'}}>施術完了: {v.count}名</div>
+                <div style={{fontSize:'12px', color:'#64748b'}}>担当: 三土手</div>
               </div>
-              <div style={countAreaStyle}>
-                <div style={{ fontSize: '15px', color: '#475569' }}>
-                  施術人数: <strong style={{fontSize:'18px', color:'#2d6a4f'}}>{item.count}</strong> 名
-                </div>
-                <div style={detailLinkStyle}>詳細を表示 ➔</div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div style={emptyStateStyle}>
-            <div style={{fontSize: '50px', marginBottom: '15px'}}>📁</div>
-            {currentViewDate.getMonth() + 1}月の訪問記録はありません。
-          </div>
-        )}
-      </div>
-
-      {/* 🌟 詳細モーダル */}
-      {selectedVisit && (
-        <div style={modalOverlayStyle} onClick={() => setSelectedVisit(null)}>
-          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
-            <div style={modalHeaderStyle}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '20px', color: '#2d6a4f' }}>訪問記録 詳細</h3>
-                <p style={{ fontSize: '14px', color: '#64748b', margin: '4px 0 0' }}>🏠 {user.name} / {selectedVisit.date.replace(/-/g, '/')}</p>
-              </div>
-              <button onClick={() => setSelectedVisit(null)} style={closeXStyle}>×</button>
-            </div>
-
-            <div style={popupSortArea}>
-              <button onClick={() => setInnerSortBy('room')} style={{...miniSortBtn, backgroundColor: innerSortBy==='room'?'#2d6a4f':'#fff', color: innerSortBy==='room'?'#fff':'#2d6a4f'}}>部屋番号順</button>
-              <button onClick={() => setInnerSortBy('name')} style={{...miniSortBtn, backgroundColor: innerSortBy==='name'?'#2d6a4f':'#fff', color: innerSortBy==='name'?'#fff':'#2d6a4f'}}>名前順</button>
-            </div>
-
-            <div style={modalListArea}>
-              {sortMembers(selectedVisit).map((m, idx) => (
-                <div key={idx} style={{...memberDetailRow, opacity: m.type === 'cancel' ? 0.6 : 1}}>
-                  <div>
-                    <span style={{fontSize: '12px', color: m.type === 'cancel' ? '#e11d48' : '#94a3b8', display:'block'}}>{m.room} 号室</span>
-                    <span style={{fontWeight: 'bold', fontSize: '17px', color: m.type === 'cancel' ? '#e11d48' : '#334155'}}>{m.name} 様</span>
-                  </div>
-                  <div style={{textAlign: 'right'}}>
-                    <span style={{
-                        ...menuBadgeStyle, 
-                        backgroundColor: m.type === 'cancel' ? '#fff1f2' : '#f0f7f4',
-                        color: m.type === 'cancel' ? '#e11d48' : '#2d6a4f'
-                      }}>
-                      {m.menu}
-                    </span>
-                    {m.type === 'cancel' && <div style={{fontSize:'10px', color:'#e11d48', marginTop:'4px'}}>※欠席</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <button onClick={() => setSelectedVisit(null)} style={closeBtnStyle}>閉じる</button>
+            ))}
           </div>
         </div>
-      )}
+
+        {/* --- 右側：詳細内容 --- */}
+        <div style={mainDetailStyle}>
+          {currentVisit ? (
+            <div style={detailContent}>
+              <div style={detailHeader}>
+                <div style={facilityBadgeStyle}>担当：三土手</div>
+                <h3 style={{margin:'10px 0', fontSize: '22px', color: '#1e293b'}}>{currentVisit.date.replace(/\//g, '/')} 訪問実績</h3>
+                <div style={statsRow}>
+                  <div style={statBox}>施術完了: <strong style={{color:'#2d6a4f'}}>{currentVisit.count}</strong> 名</div>
+                  {cancelMembers.length > 0 && <div style={{...statBox, color: '#e11d48', backgroundColor: '#fff1f2'}}>欠席: <strong>{cancelMembers.length}</strong> 名</div>}
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+                  <button onClick={() => setDetailSortBy("room")} style={{...miniSortBtn, backgroundColor: detailSortBy==='room'?'#2d6a4f':'#f1f5f9', color: detailSortBy==='room'?'white':'#2d6a4f'}}>部屋順</button>
+                  <button onClick={() => setDetailSortBy("name")} style={{...miniSortBtn, backgroundColor: detailSortBy==='name'?'#2d6a4f':'#f1f5f9', color: detailSortBy==='name'?'white':'#2d6a4f'}}>名前順</button>
+                </div>
+              </div>
+
+              <h4 style={sectionTitleStyle}>✅ 施術完了メンバー</h4>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>部屋</th>
+                    <th style={thStyle}>お名前</th>
+                    <th style={thStyle}>メニュー</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {getSortedMembers(currentVisit.members).map((m, idx) => (
+                    <tr key={idx} style={trStyle}>
+                      <td style={tdStyle}>{m.room}</td>
+                      <td style={{...tdStyle, fontWeight:'bold'}}>{m.name} 様</td>
+                      <td style={tdStyle}><span style={menuBadgeStyle}>{m.menu}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {cancelMembers.length > 0 && (
+                <div style={{marginTop: '40px'}}>
+                  <h4 style={{...sectionTitleStyle, color:'#e11d48'}}>🚩 当日欠席</h4>
+                  <table style={{...tableStyle, border: '1px solid #fee2e2'}}>
+                    <tbody style={{backgroundColor: '#fff1f2'}}>
+                      {cancelMembers.map((m, idx) => (
+                        <tr key={idx} style={trStyle}>
+                          <td style={{...tdStyle, width:'80px'}}>{m.room}</td>
+                          <td style={{...tdStyle, fontWeight:'bold', color: '#e11d48'}}>{m.name} 様</td>
+                          <td style={{...tdStyle, color: '#e11d48'}}>当日欠席</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={emptyStateStyle}>
+              <div style={{fontSize:'60px', marginBottom: '20px'}}>👈</div>
+              <p style={{fontSize: '18px'}}>左のリストから訪問日を選択してください</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-// 🎨 スタイル設定
-const containerStyle = { display: 'flex', flexDirection: 'column', height: '100%', gap: '20px' };
-const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px' };
-
-// 🌟 ナビゲーション用の追加スタイル
-const monthNavStyle = { display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: 'white', padding: '10px 20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' };
-const monthLabel = { fontSize: '18px', fontWeight: 'bold' };
-const navBtn = { padding: '5px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer' };
-
-const historyGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px', overflowY: 'auto' };
-const historyCardStyle = { backgroundColor: 'white', padding: '25px', borderRadius: '20px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderLeft: '8px solid #2d6a4f', cursor: 'pointer', transition: '0.2s transform' };
-const dateHeaderStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' };
-const staffBadgeStyle = { fontSize: '12px', backgroundColor: '#f0f7f4', color: '#2d6a4f', padding: '5px 12px', borderRadius: '15px', fontWeight: 'bold' };
-const countAreaStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
-const detailLinkStyle = { fontSize: '14px', color: '#3b82f6', fontWeight: 'bold' };
-const emptyStateStyle = { gridColumn: '1/-1', textAlign: 'center', padding: '100px', color: '#94a3b8', backgroundColor: 'white', borderRadius: '32px' };
-const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0, 0, 0, 0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, backdropFilter: 'blur(4px)' };
-const modalContentStyle = { backgroundColor: 'white', width: '500px', borderRadius: '32px', padding: '35px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' };
-const modalHeaderStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', borderBottom: '2px solid #f0f7f4', paddingBottom: '15px' };
-const closeXStyle = { background: 'none', border: 'none', fontSize: '30px', cursor: 'pointer', color: '#94a3b8' };
-const popupSortArea = { display: 'flex', gap: '10px', marginBottom: '20px' };
-const miniSortBtn = { flex: 1, padding: '10px', borderRadius: '12px', border: '1px solid #2d6a4f', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' };
-const modalListArea = { maxHeight: '50vh', overflowY: 'auto', paddingRight: '10px' };
-const memberDetailRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: '1px solid #f8fafc' };
-const menuBadgeStyle = { padding: '5px 15px', borderRadius: '10px', fontSize: '13px', fontWeight: 'bold' };
-const closeBtnStyle = { width: '100%', marginTop: '30px', padding: '15px', backgroundColor: '#2d6a4f', color: 'white', border: 'none', borderRadius: '18px', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' };
+// 🎨 スタイル設定（施設用カラー：グリーン基調）
+const containerStyle = { height: '100%', display: 'flex', flexDirection: 'column', gap: '20px' };
+const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
+const monthNavStyle = { display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: 'white', padding: '10px 20px', borderRadius: '15px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' };
+const monthBtnStyle = { border: 'none', backgroundColor: '#f0fdf4', color: '#2d6a4f', padding: '8px 15px', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' };
+const monthLabelStyle = { fontSize: '18px', fontWeight: 'bold', minWidth: '120px', textAlign: 'center' };
+const contentWrapperStyle = { flex: 1, display: 'flex', gap: '20px', overflow: 'hidden', minHeight: 0 };
+const sidebarAreaStyle = { width: '280px', display: 'flex', flexDirection: 'column', backgroundColor: 'white', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' };
+const listHeader = { padding: '15px 20px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', fontSize: '14px', color: '#64748b' };
+const scrollArea = { flex: 1, overflowY: 'auto' };
+const visitCardStyle = { padding: '20px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', transition: '0.2s' };
+const mainDetailStyle = { flex: 1, backgroundColor: 'white', borderRadius: '20px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', padding: '40px', border: '1px solid #e2e8f0' };
+const detailContent = { width: '100%' };
+const detailHeader = { borderBottom: '2px solid #f1f5f9', paddingBottom: '25px', marginBottom: '25px' };
+const facilityBadgeStyle = { display: 'inline-block', backgroundColor: '#2d6a4f', color: 'white', padding: '5px 15px', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold' };
+const statsRow = { display: 'flex', gap: '25px', marginTop: '15px' };
+const statBox = { fontSize: '16px', color: '#475569', backgroundColor: '#f8fafc', padding: '10px 20px', borderRadius: '12px' };
+const miniSortBtn = { padding: '8px 15px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' };
+const sectionTitleStyle = { fontSize: '16px', fontWeight: 'bold', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' };
+const tableStyle = { width: '100%', borderCollapse: 'collapse', borderRadius: '12px', overflow: 'hidden' };
+const thStyle = { textAlign: 'left', padding: '15px', backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '14px' };
+const tdStyle = { padding: '15px', borderBottom: '1px solid #f1f5f9', fontSize: '15px' };
+const trStyle = { transition: '0.2s' };
+const menuBadgeStyle = { backgroundColor: '#f0fdf4', color: '#2d6a4f', padding: '4px 10px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold' };
+const emptyStateStyle = { height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: '#94a3b8' };

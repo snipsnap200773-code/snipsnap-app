@@ -28,7 +28,8 @@ export default function AdminMenu_PC({
   setActiveFacility, 
   activeFacility,
   updateUserNotes,
-  colorList = [] // 🌟【修正】App.jsx から薬剤リストを受け取る
+  colorList = [],
+  refreshAllData // 🌟 司令塔（App.jsx）からデータ更新関数を受け取る
 }) {
   const [activeTab, setActiveTab] = useState('dashboard');
 
@@ -86,9 +87,7 @@ export default function AdminMenu_PC({
           </button>
         </nav>
 
-        <div style={sidebarFooter}>
-          <button onClick={() => setPage('menu')} style={backBtnStyle}>← モバイル画面へ戻る</button>
-        </div>
+        {/* 🌟 モバイル戻るボタンがあった footer エリアを削除しました */}
       </aside>
 
       <main style={mainContentStyle}>
@@ -105,6 +104,7 @@ export default function AdminMenu_PC({
               keepDates={keepDates} 
               historyList={historyList}
               checkDateSelectable={checkDateSelectable}
+              refreshAllData={refreshAllData} // 🌟 バケツリレー
             />
           )}
 
@@ -116,10 +116,10 @@ export default function AdminMenu_PC({
               setKeepDates={setKeepDates}
               historyList={historyList} 
               allUsers={users}
+              refreshAllData={refreshAllData} // 🌟 バケツリレー
             />
           )}
 
-          {/* 🌟【ここを修正】TaskMode_PC へ colorList を渡す！ */}
           {activeTab === 'task-input' && (
             <TaskMode_PC 
               bookingList={bookingList} 
@@ -132,8 +132,9 @@ export default function AdminMenu_PC({
               activeFacility={activeFacility} 
               setActiveFacility={setActiveFacility} 
               updateUserNotes={updateUserNotes}
-              colorList={colorList} // 🌟【追加】これで薬剤一覧が出ます！
-              menuPrices={{ // 🌟【追加】価格計算に必要
+              colorList={colorList} 
+              refreshAllData={refreshAllData} // 🌟 バケツリレー
+              menuPrices={{
                 'カット': 1600, 'カラー（リタッチ）': 4600, 'カラー（全体）': 5600, 'パーマ': 4600,
                 'カット＋カラー（リタッチ）': 6100, 'カット＋カラー（全体）': 7100, 'カット＋パーマ': 6100,
                 'カット＋カラー（リタッチ）＋パーマ': 11600, 'カット＋カラー（全体）＋パーマ': 11600, 'カラー': 5600
@@ -154,11 +155,20 @@ export default function AdminMenu_PC({
           )}
 
           {activeTab === 'user-manager' && (
-            <AdminMasterUserList_PC users={users} setUsers={setUsers} facilityMaster={dbFacilities} historyList={historyList} />
+            <AdminMasterUserList_PC 
+              users={users} 
+              setUsers={setUsers} 
+              facilityMaster={dbFacilities} 
+              historyList={historyList} 
+              refreshAllData={refreshAllData} // 🌟 バケツリレー
+            />
           )}
 
           {activeTab === 'facility-manager' && (
-            <AdminFacilityList_PC dbFacilities={dbFacilities} />
+            <AdminFacilityList_PC 
+              dbFacilities={dbFacilities} 
+              refreshAllData={refreshAllData} // 🌟 バケツリレー
+            />
           )}
 
           {activeTab === 'task-confirm-view' && (
@@ -167,6 +177,7 @@ export default function AdminMenu_PC({
               setPage={() => setActiveTab('task-input')}
               historyList={historyList}
               bookingList={bookingList}
+              refreshAllData={refreshAllData} // 🌟 バケツリレー
             />
           )}
         </div>
@@ -175,7 +186,7 @@ export default function AdminMenu_PC({
   );
 }
 
-// --- スタイル定義 (変更なし) ---
+// --- スタイル定義 ---
 const pcLayoutStyle = { display: 'flex', height: '100vh', width: '100%', backgroundColor: '#f1f5f9', overflow: 'hidden' };
 const sidebarStyle = { width: '280px', minWidth: '280px', backgroundColor: '#0f172a', color: 'white', display: 'flex', flexDirection: 'column', boxShadow: '4px 0 15px rgba(0,0,0,0.1)', zIndex: 10 };
 const sidebarHeader = { padding: '40px 24px', borderBottom: '1px solid rgba(255,255,255,0.1)' };
@@ -186,7 +197,5 @@ const sectionLabelStyle = { padding: '24px 24px 8px 20px', fontSize: '11px', tex
 const navStyle = { flex: 1, padding: '12px 0', display: 'flex', flexDirection: 'column', overflowY: 'auto' };
 const navBtnStyle = { width: '100%', padding: '14px 24px', backgroundColor: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '15px', transition: 'all 0.2s ease', fontWeight: '500', display: 'flex', alignItems: 'center', outline: 'none' };
 const iconStyle = { marginRight: '12px', fontSize: '18px' };
-const sidebarFooter = { padding: '24px', borderTop: '1px solid rgba(255,255,255,0.1)' };
-const backBtnStyle = { width: '100%', padding: '12px', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'center' };
 const mainContentStyle = { flex: 1, overflowY: 'auto', height: '100vh', boxSizing: 'border-box', position: 'relative' };
 const contentInnerStyle = { padding: '40px min(5vw, 60px)', maxWidth: '1600px', margin: '0 auto' };
