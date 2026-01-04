@@ -66,7 +66,7 @@ export default function AdminMenu_PC({
 
           <div style={sectionLabelStyle}>現場・バックアップ</div>
           <button onClick={() => setActiveTab('task-input')} style={getNavBtnStyle('task-input')}>
-            <span style={iconStyle}>✂️</span> 施術タスク入力
+            <span style={iconStyle}>✂️</span> 今日のタスク
           </button>
           <button onClick={() => setActiveTab('print-list')} style={getNavBtnStyle('print-list')}>
             <span style={iconStyle}>🖨️</span> 当日リスト印刷
@@ -83,7 +83,7 @@ export default function AdminMenu_PC({
             <span style={iconStyle}>👥</span> 利用者名簿
           </button>
           <button onClick={() => setActiveTab('facility-manager')} style={getNavBtnStyle('facility-manager')}>
-            <span style={iconStyle}>🏢</span> 施設名簿
+            <span style={iconStyle}>🏢</span> 施設情報・登録
           </button>
         </nav>
 
