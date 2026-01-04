@@ -9,24 +9,18 @@ export default function FacilityConfirmBooking_PC({
   historyList = [],
   user 
 }) {
-  // 🌟 ロジック保持：自動月判定
+  // 🌟【ロジック復元】自動月判定
+  // 1月の履歴が完了していれば2月、そうでなければ今月を表示
   const [currentViewDate, setCurrentViewDate] = useState(() => {
     const now = new Date();
     const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const currentMonthSlash = currentMonthKey.replace(/-/g, '/');
     const thisMonthHistory = historyList.filter(h => h.facility === user?.name && h.date.startsWith(currentMonthSlash));
+    
+    // 全員分の履歴があれば、翌月をデフォルトにする
     const isAllDone = thisMonthHistory.length >= users.length && users.length > 0;
     if (isAllDone) return new Date(now.getFullYear(), now.getMonth() + 1, 1);
     
-    if (keepDates.length > 0) {
-      const sorted = [...keepDates].sort((a, b) => {
-        const dateA = typeof a === 'string' ? a : a.date;
-        const dateB = typeof b === 'string' ? b : b.date;
-        return (dateA || "").localeCompare(dateB || "");
-      });
-      const firstDate = typeof sorted[0] === 'string' ? sorted[0] : sorted[0].date;
-      return new Date(firstDate);
-    }
     return now;
   });
 
@@ -49,10 +43,11 @@ export default function FacilityConfirmBooking_PC({
 
   const currentMonthKey = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth() + 1).padStart(2, '0')}`;
 
+  // 🌟【ロジック厳格化】今表示している「特定の月」の日付だけを抽出
   const visibleDates = keepDates
     .filter(d => {
       const dateStr = typeof d === 'string' ? d : d?.date;
-      return dateStr && dateStr.startsWith(currentMonthKey);
+      return dateStr && dateStr.startsWith(currentMonthKey) && (typeof d === 'string' ? true : d.facility === user.name);
     })
     .map(d => (typeof d === 'string' ? d : d.date)) 
     .sort();
@@ -100,7 +95,7 @@ export default function FacilityConfirmBooking_PC({
         <div>
           <h2 style={{margin:0, color: '#4a3728', fontSize: '28px'}}>✅ これで決まり！予約確定！</h2>
           <div style={activeMonthBoxStyle}>
-            訪問予定日：{visibleDates.length > 0 ? visibleDates.map(d => d.replace(/-/g, '/')).join(' ・ ') : "キープ枠なし"}
+            訪問予定日：{visibleDates.length > 0 ? visibleDates.map(d => d.replace(/-/g, '/')).join(' ・ ') : "表示月のキープ枠なし"}
           </div>
         </div>
         <div style={monthNavStyle}>
@@ -115,12 +110,8 @@ export default function FacilityConfirmBooking_PC({
           <div style={stickySubHeader}>
             <div style={{fontWeight:'800', color:'#5d4037', fontSize:'16px'}}>1. 施術を受ける方を選んでください</div>
             <div style={sortBarStyle}>
-              <button onClick={() => toggleSort('room')} style={{...pcSortBtn, backgroundColor: sortKey === 'room' ? '#4a3728' : 'white', color: sortKey === 'room' ? 'white' : '#4a3728', borderColor: '#4a3728'}}>
-                部屋順 {sortKey === 'room' && (sortOrder === 'asc' ? '▲' : '▼')}
-              </button>
-              <button onClick={() => toggleSort('name')} style={{...pcSortBtn, backgroundColor: sortKey === 'name' ? '#4a3728' : 'white', color: sortKey === 'name' ? 'white' : '#4a3728', borderColor: '#4a3728'}}>
-                名前順 {sortKey === 'name' && (sortOrder === 'asc' ? '▲' : '▼')}
-              </button>
+              <button onClick={() => toggleSort('room')} style={{...pcSortBtn, backgroundColor: sortKey === 'room' ? '#4a3728' : 'white', color: sortKey === 'room' ? 'white' : '#4a3728', borderColor: '#4a3728'}}>部屋順</button>
+              <button onClick={() => toggleSort('name')} style={{...pcSortBtn, backgroundColor: sortKey === 'name' ? '#4a3728' : 'white', color: sortKey === 'name' ? 'white' : '#4a3728', borderColor: '#4a3728'}}>名前順</button>
             </div>
           </div>
           <div style={userVerticalList} ref={leftListRef}>
@@ -128,12 +119,12 @@ export default function FacilityConfirmBooking_PC({
               const isSelected = selectedMembers.some(m => m.id === userItem.id);
               return (
                 <div key={userItem.id} onClick={() => toggleUserSelection(userItem, idx)}
-                  style={{ ...userRowStyle, backgroundColor: isSelected ? '#f0f9f1' : 'white', borderColor: isSelected ? '#2d6a4f' : '#e2d6cc' }}>
+                  style={{ ...userRowStyle, backgroundColor: isSelected ? '#f0f9f1' : 'white', borderColor: isSelected ? '#2d6a4f' : '#e2e8f0' }}>
                   <div>
                     <div style={{fontSize:'14px', color:'#8b5e3c', fontWeight: '600'}}>{userItem.floor} {userItem.room}号室</div>
                     <div style={{fontSize:'20px', fontWeight:'800', color: '#4a3728'}}>{userItem.name} 様</div>
                   </div>
-                  <div style={{fontSize:'28px', color: isSelected ? '#2d6a4f' : '#e2d6cc'}}>{isSelected ? '✅' : '＋'}</div>
+                  <div style={{fontSize:'28px', color: isSelected ? '#2d6a4f' : '#e2e8f0'}}>{isSelected ? '✅' : '＋'}</div>
                 </div>
               );
             })}
@@ -176,8 +167,8 @@ export default function FacilityConfirmBooking_PC({
 
       <footer style={pcFooterStyle}>
         <div style={{fontSize:'22px', color: '#4a3728', fontWeight: '800'}}>合計 <strong>{selectedMembers.length}</strong> 名の予約を確定します</div>
-        <button disabled={selectedMembers.length === 0 || !visibleDates || visibleDates.length === 0} onClick={() => setPage('timeselect')}
-          style={{ ...pcConfirmBtn, backgroundColor: (selectedMembers.length === 0 || !visibleDates || visibleDates.length === 0) ? '#cbd5e0' : '#4a3728', cursor: (selectedMembers.length === 0) ? 'default' : 'pointer' }}>
+        <button disabled={selectedMembers.length === 0 || visibleDates.length === 0} onClick={() => setPage('timeselect')}
+          style={{ ...pcConfirmBtn, backgroundColor: (selectedMembers.length === 0 || visibleDates.length === 0) ? '#cbd5e0' : '#4a3728' }}>
           開始時間を選択する ➔
         </button>
       </footer>
@@ -185,34 +176,26 @@ export default function FacilityConfirmBooking_PC({
   );
 }
 
-// 🎨 スタイル設定（警告修正済・アンティーク版）
+// スタイルは以前のアンティーク版と同じ
 const pcWrapperStyle = { display: 'flex', flexDirection: 'column', height: 'calc(100vh - 40px)', width: '100%', position: 'relative', fontFamily: '"Hiragino Kaku Gothic ProN", "Meiryo", sans-serif' };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '24px 30px', borderRadius: '25px', boxShadow: '0 4px 12px rgba(74, 55, 40, 0.08)', marginBottom: '20px' };
 const monthNavStyle = { display: 'flex', alignItems: 'center', gap: '20px', backgroundColor: '#f9f7f5', padding: '10px 20px', borderRadius: '15px', border: '1px solid #e2d6cc' };
-
-// 🌟 ここが修正ポイント：borderの重複を消しました
 const monthBtnStyle = { backgroundColor: 'white', color: '#4a3728', padding: '8px 15px', borderRadius: '10px', cursor: 'pointer', fontWeight: '800', fontSize: '18px', border: '1px solid #e0d6cc' };
-
 const monthLabelStyle = { fontSize: '22px', fontWeight: '800', color: '#4a3728', minWidth: '140px', textAlign: 'center' };
 const activeMonthBoxStyle = { fontSize: '18px', color:'#7a6b5d', marginTop:'8px', fontWeight:'800' };
-
 const twoColumnLayout = { display: 'flex', flex: 1, gap: '25px', minHeight: 0, marginBottom: '100px' };
-const leftScrollSide = { flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', borderRadius: '25px', border: '1px solid #e2d6cc', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' };
+const leftScrollSide = { flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', borderRadius: '25px', border: '1px solid #e2d6cc', overflow: 'hidden' };
 const rightScrollSide = { flex: 1.2, display: 'flex', flexDirection: 'column', backgroundColor: '#fdfcfb', borderRadius: '25px', border: '3px solid #2d6a4f', overflow: 'hidden', boxShadow: '0 8px 25px rgba(45,106,79,0.12)' };
-
 const stickySubHeader = { padding: '20px 25px', borderBottom: '1px solid #e2d6cc', backgroundColor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)' };
 const sortBarStyle = { display: 'flex', gap: '12px', marginTop: '12px' };
-const pcSortBtn = { padding: '10px 20px', borderRadius: '12px', border: '2px solid', cursor: 'pointer', fontSize: '14px', fontWeight: '800', transition: '0.2s' };
-
+const pcSortBtn = { padding: '10px 20px', borderRadius: '12px', border: '2px solid', cursor: 'pointer', fontSize: '14px', fontWeight: '800' };
 const userVerticalList = { flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' };
-const userRowStyle = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 25px', borderRadius: '18px', border: '2px solid', cursor: 'pointer', transition: '0.3s' };
-
-const selectedCardStyle = { padding: '20px', borderRadius: '20px', border: '1px solid #e2d6cc', backgroundColor: 'white', boxShadow: '0 4px 10px rgba(0,0,0,0.02)' };
+const userRowStyle = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 25px', borderRadius: '18px', border: '2px solid', cursor: 'pointer' };
+const selectedCardStyle = { padding: '20px', borderRadius: '20px', border: '1px solid #e2d6cc', backgroundColor: 'white' };
 const selectedCardHeader = { marginBottom: '15px' };
 const menuFlexContainer = { display: 'flex', gap: '10px', alignItems: 'center' };
-const pcMenuBtn = { padding: '14px 0', borderRadius: '12px', fontSize: '16px', fontWeight: '800', cursor: 'pointer', transition: '0.2s' };
-const removeBtnStyle = { padding: '14px 18px', backgroundColor: '#fff5f5', color: '#c62828', border: '2px solid #ef9a9a', borderRadius: '12px', fontSize: '15px', fontWeight: '800', cursor: 'pointer', whiteSpace: 'nowrap' };
-
+const pcMenuBtn = { padding: '14px 0', borderRadius: '12px', fontSize: '16px', fontWeight: '800', cursor: 'pointer' };
+const removeBtnStyle = { padding: '14px 18px', backgroundColor: '#fff5f5', color: '#c62828', border: '2px solid #ef9a9a', borderRadius: '12px', fontSize: '15px', fontWeight: '800', cursor: 'pointer' };
 const emptyMessage = { textAlign: 'center', marginTop: '120px', color: '#a39081', fontSize: '18px', fontWeight: '800' };
 const pcFooterStyle = { position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '25px 40px', backgroundColor: 'white', borderRadius: '30px 30px 0 0', boxShadow: '0 -10px 30px rgba(74, 55, 40, 0.1)', zIndex: 10, border: '1px solid #e2d6cc' };
-const pcConfirmBtn = { padding: '20px 50px', color: 'white', border: 'none', borderRadius: '20px', fontWeight: '800', fontSize: '20px', boxShadow: '0 6px 15px rgba(74, 55, 40, 0.3)', transition: '0.3s' };
+const pcConfirmBtn = { padding: '20px 50px', color: 'white', border: 'none', borderRadius: '20px', fontWeight: '800', fontSize: '20px' };

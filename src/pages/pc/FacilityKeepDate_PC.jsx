@@ -104,7 +104,6 @@ export default function FacilityKeepDate_PC({
       </header>
 
       <div style={calendarGrid}>
-        {/* 🌟 曜日ヘッダーを枠の中央に配置 */}
         {['日', '月', '火', '水', '木', '金', '土'].map(w => (
           <div key={w} style={weekHeaderStyle}>{w}</div>
         ))}
@@ -142,9 +141,7 @@ export default function FacilityKeepDate_PC({
               }}
             >
               <div style={{display:'flex', justifyContent:'space-between', alignItems: 'center'}}>
-                {/* 🌟 日付の数字を大きく */}
                 <span style={{...dayNumStyle, color: (status === 'available' || status === 'keeping' || status === 'my-booked') ? '#4a3728' : '#cbd5e0'}}>{day}</span>
-                {/* 🌟 状態ラベルを少し大きく */}
                 <span style={{fontSize: '12px', fontWeight: '900', color: style.color}}>{style.label}</span>
               </div>
               <div style={statusTextStyle}>
@@ -187,17 +184,33 @@ export default function FacilityKeepDate_PC({
   );
 }
 
-// 🎨 スタイル設定（全体的に文字サイズをアップ）
-const containerStyle = { display: 'flex', flexDirection: 'column', height: '100%', gap: '15px', fontFamily: '"Hiragino Kaku Gothic ProN", "Meiryo", sans-serif' };
+// 🎨 スタイル設定（ブラウザ拡大対応版）
+const containerStyle = { 
+  display: 'flex', 
+  flexDirection: 'column', 
+  height: 'auto', // 固定高さを解除
+  minHeight: '100%', // ページ全体を満たす
+  gap: '15px', 
+  fontFamily: '"Hiragino Kaku Gothic ProN", "Meiryo", sans-serif',
+  paddingBottom: '40px' // 下部に余裕を持たせる
+};
+
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '24px 30px', borderRadius: '20px', boxShadow: '0 4px 12px rgba(74, 55, 40, 0.08)' };
 const navGroup = { display: 'flex', alignItems: 'center', gap: '20px' };
 const iconBtnStyle = { padding: '10px 22px', border: '2px solid #e0d6cc', borderRadius: '14px', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#4a3728', fontSize: '18px', transition: '0.2s' };
 const monthLabel = { fontSize: '26px', fontWeight: '800', color: '#4a3728', minWidth: '160px', textAlign: 'center' };
 
-// 🌟 カレンダーグリッド
-const calendarGrid = { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', flex: 1, backgroundColor: '#e2d6cc', gap: '1px', border: '2px solid #e2d6cc', borderRadius: '20px', overflow: 'hidden' };
+// 🌟 カレンダーグリッド：高さを固定せず、中身の大きさに合わせる設定に変更
+const calendarGrid = { 
+  display: 'grid', 
+  gridTemplateColumns: 'repeat(7, 1fr)', 
+  backgroundColor: '#e2d6cc', 
+  gap: '1px', 
+  border: '2px solid #e2d6cc', 
+  borderRadius: '20px', 
+  overflow: 'hidden' 
+};
 
-// 🌟 曜日ヘッダーの修正：中央揃えを強化
 const weekHeaderStyle = { 
   backgroundColor: '#f9f7f5', 
   padding: '16px 0', 
@@ -211,12 +224,26 @@ const weekHeaderStyle = {
   borderBottom: '2px solid #e2d6cc' 
 };
 
-const dayStyle = { padding: '12px', minHeight: '100px', display: 'flex', flexDirection: 'column', transition: '0.3s', backgroundColor: 'white' };
+const dayStyle = { 
+  padding: '12px', 
+  minHeight: '120px', // 少し高さを広げて余裕を持たせる
+  display: 'flex', 
+  flexDirection: 'column', 
+  transition: '0.3s', 
+  backgroundColor: 'white' 
+};
+
 const emptyDayStyle = { backgroundColor: '#faf9f8' };
 const dayNumStyle = { fontSize: '20px', fontWeight: '800' };
 const statusTextStyle = { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' };
 
-const footerAreaStyle = { marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '15px' };
+const footerAreaStyle = { 
+  marginTop: '20px', 
+  display: 'flex', 
+  flexDirection: 'column', 
+  gap: '15px' 
+};
+
 const legendArea = { display: 'flex', gap: '30px', justifyContent: 'center', backgroundColor: 'white', padding: '14px', borderRadius: '35px' };
 const legendItem = { display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#5d4037', fontWeight: 'bold' };
 const dot = { width: '16px', height: '16px', borderRadius: '5px' };
