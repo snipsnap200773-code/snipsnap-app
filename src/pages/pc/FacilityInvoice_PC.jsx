@@ -5,10 +5,9 @@ export default function FacilityInvoice_PC({ historyList = [], user }) {
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.toISOString().substring(0, 7));
 
-  // ログインユーザーの施設名（この施設だけのデータを対象にする）
   const myFacilityName = user?.name || "";
 
-  // 🌟 価格取得ロジック（管理者用から移植：キーワード判定版）
+  // 🌟 ロジック保持：価格取得
   const getPriceForMenu = (menuName) => {
     if (!menuName) return 0;
     const basePrices = {
@@ -33,17 +32,14 @@ export default function FacilityInvoice_PC({ historyList = [], user }) {
 
   const monthSlash = selectedMonth.replace(/-/g, '/');
 
-  // 🌟 データ抽出・重複排除（管理者用ロジックをこの施設専用に適用）
+  // 🌟 ロジック保持：データ抽出・重複排除
   const sortedList = useMemo(() => {
     const rawData = historyList.filter(h => h.facility === myFacilityName && h.date.startsWith(monthSlash));
-    
-    // 重複排除（同じ日に同じ人が複数回記録されている場合、最新を保持）
     const uniqueMap = new Map();
     rawData.forEach(item => {
       const key = `${item.date}-${item.name}`;
       uniqueMap.set(key, item);
     });
-
     return Array.from(uniqueMap.values()).sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date);
       return a.room.toString().localeCompare(b.room.toString(), undefined, { numeric: true });
@@ -53,34 +49,20 @@ export default function FacilityInvoice_PC({ historyList = [], user }) {
   const totalAmount = sortedList.reduce((sum, item) => sum + getItemPrice(item), 0);
   const getDayName = (dateStr) => ['日', '月', '火', '水', '木', '金', '土'][new Date(dateStr.replace(/\//g, '-')).getDay()];
 
-  // 🌟 印刷実行関数（管理者用と全く同じ完璧なレイアウト）
+  // 🌟 ロジック保持：印刷実行（中身は一切変えていません）
   const openPrintWindow = () => {
     const displayMonth = selectedMonth.split('-')[1];
     const printTitle = `${myFacilityName}_${displayMonth}月度_利用明細書`;
-
     const printWin = window.open('', '_blank', 'width=900,height=1000');
-    
     let content = `
       <html>
         <head>
           <title>${printTitle}</title>
           <style>
-            /* 🌟 余白0・自動レイアウト設定 */
             @page { size: A4; margin: 0; }
             body { font-family: sans-serif; margin: 0; padding: 0; background: white; color: black; }
-            .full-list-page { 
-              width: 210mm; 
-              min-height: 297mm; 
-              padding: 15mm 20mm; 
-              box-sizing: border-box; 
-            }
-            .header-area { 
-              display: flex; 
-              justify-content: space-between; 
-              border-bottom: 2px solid #000; 
-              padding-bottom: 10px; 
-              margin-bottom: 20px; 
-            }
+            .full-list-page { width: 210mm; min-height: 297mm; padding: 15mm 20mm; box-sizing: border-box; }
+            .header-area { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
             table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 20px; }
             th, td { border-bottom: 1px solid #ddd; padding: 8px; text-align: left; }
             .stripe-bg { background-color: #f8fafc !important; -webkit-print-color-adjust: exact; }
@@ -96,7 +78,6 @@ export default function FacilityInvoice_PC({ historyList = [], user }) {
               <div><h1>${displayMonth}月度 請求明細書</h1><h2>${myFacilityName} 御中</h2></div>
               <div style="font-size:11px; text-align:right;"><strong>美容室SnipSnap</strong><br/>〒227-0055 横浜市青葉区つつじヶ丘36-22-102<br/>TEL (045) 984-8808</div>
             </div>
-            
             <table>
               <thead>
                 <tr><th>No</th><th>日付</th><th>部屋</th><th>名前</th><th>メニュー</th><th class="right">金額</th></tr>
@@ -114,7 +95,6 @@ export default function FacilityInvoice_PC({ historyList = [], user }) {
                 `).join('')}
               </tbody>
             </table>
-
             <div style="margin-top:20px; text-align:right; page-break-inside: avoid;">
               <div style="font-size:22px; font-weight:bold;">合計金額：¥${totalAmount.toLocaleString()} (税込)</div>
               <div style="margin-top:10px; border:1px solid #000; padding:10px; display:inline-block; text-align:left; font-size:12px;">
@@ -126,7 +106,6 @@ export default function FacilityInvoice_PC({ historyList = [], user }) {
         </body>
       </html>
     `;
-
     printWin.document.write(content);
     printWin.document.close();
   };
@@ -134,11 +113,15 @@ export default function FacilityInvoice_PC({ historyList = [], user }) {
   return (
     <div style={containerStyle}>
       <div style={controlPanel}>
-        <h2 style={{ color: '#1e293b', textAlign: 'center', margin: '0 0 20px 0' }}>📑 請求・利用明細書の確認</h2>
+        <h2 style={{ color: '#4a3728', textAlign: 'center', margin: '0 0 30px 0', fontSize: '28px', fontWeight: '900' }}>
+          📑 請求・利用明細書の確認
+        </h2>
         
         <div style={yearRow}>
           <button style={circleBtn} onClick={() => setCurrentYear(y => y - 1)}>◀</button>
-          <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{currentYear}年</span>
+          <span style={{ fontSize: '32px', fontWeight: '900', color: '#4a3728', minWidth: '160px', textAlign: 'center' }}>
+            {currentYear}年
+          </span>
           <button style={circleBtn} onClick={() => setCurrentYear(y => y + 1)}>▶</button>
         </div>
 
@@ -149,7 +132,13 @@ export default function FacilityInvoice_PC({ historyList = [], user }) {
             return (
               <button 
                 key={m} 
-                style={{...monthBtn, backgroundColor: active ? '#1e293b' : 'white', color: active ? 'white' : '#334155'}} 
+                style={{
+                  ...monthBtn, 
+                  backgroundColor: active ? '#4a3728' : 'white', 
+                  color: active ? 'white' : '#5d4037',
+                  borderColor: active ? '#4a3728' : '#e0d6cc',
+                  transform: active ? 'scale(1.05)' : 'scale(1)',
+                }} 
                 onClick={() => setSelectedMonth(target)}
               >{m}月</button>
             );
@@ -160,28 +149,101 @@ export default function FacilityInvoice_PC({ historyList = [], user }) {
           {sortedList.length > 0 ? (
             <>
               <div style={statusBadge}>
-                <strong>{myFacilityName}</strong> 様の {selectedMonth.split('-')[1]}月分 データを抽出しました
+                <span style={{fontSize: '20px'}}>✅</span> <strong>{myFacilityName}</strong> 様の {selectedMonth.split('-')[1]}月分 データを抽出しました
               </div>
-              <button style={printMainBtn} onClick={openPrintWindow}>📄 明細書を発行（印刷・保存）</button>
+              <button style={printMainBtn} onClick={openPrintWindow}>
+                📄 明細書を発行（印刷・保存）
+              </button>
             </>
           ) : (
-            <div style={{...statusBadge, backgroundColor: '#f1f5f9', color: '#64748b'}}>
+            <div style={{...statusBadge, backgroundColor: '#f9f7f5', color: '#a39081', border: '1px dashed #cbd5e1'}}>
               {selectedMonth.split('-')[1]}月分の利用データはありません
             </div>
           )}
         </div>
       </div>
+      <p style={{textAlign: 'center', color: '#94a3b8', marginTop: '30px', fontSize: '14px'}}>
+        ※前月分以前のデータも、年・月を切り替えることでいつでも発行可能です。
+      </p>
     </div>
   );
 }
 
-// 🎨 デザイン設定（InvoiceManager_PCと統一）
-const containerStyle = { padding: '40px', height: '100%', boxSizing: 'border-box' };
-const controlPanel = { backgroundColor: 'white', padding: '40px', borderRadius: '30px', boxShadow: '0 10px 40px rgba(0,0,0,0.08)', maxWidth: '700px', margin: '0 auto' };
-const yearRow = { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '30px', marginBottom: '30px' };
-const circleBtn = { width: '44px', height: '44px', borderRadius: '50%', border: '1px solid #cbd5e1', backgroundColor: 'white', cursor: 'pointer', fontSize: '18px' };
-const monthGrid = { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginBottom: '40px' };
-const monthBtn = { padding: '15px', border: '1px solid #cbd5e1', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold' };
-const actionArea = { marginTop: '20px', paddingTop: '30px', borderTop: '2px dashed #e2e8f0', textAlign: 'center' };
-const statusBadge = { display: 'inline-block', padding: '10px 25px', backgroundColor: '#eff6ff', color: '#1e40af', borderRadius: '30px', marginBottom: '25px', fontSize: '15px' };
-const printMainBtn = { padding: '20px 40px', backgroundColor: '#1e293b', color: 'white', border: 'none', borderRadius: '15px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 5px 15px rgba(0,0,0,0.2)', width: '100%' };
+// 🎨 デザイン設定（特大文字・アンティーク調）
+const containerStyle = { padding: '60px 40px', height: '100%', boxSizing: 'border-box', fontFamily: '"Hiragino Kaku Gothic ProN", "Meiryo", sans-serif' };
+const controlPanel = { 
+  backgroundColor: 'white', 
+  padding: '60px', 
+  borderRadius: '40px', 
+  boxShadow: '0 20px 60px rgba(74, 55, 40, 0.12)', 
+  maxWidth: '850px', 
+  margin: '0 auto',
+  border: '1px solid #e2d6cc'
+};
+
+const yearRow = { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '40px', marginBottom: '40px' };
+const circleBtn = { 
+  width: '60px', 
+  height: '60px', 
+  borderRadius: '50%', 
+  border: '2px solid #e0d6cc', 
+  backgroundColor: 'white', 
+  cursor: 'pointer', 
+  fontSize: '24px', 
+  color: '#4a3728',
+  transition: '0.3s',
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  fontWeight: 'bold'
+};
+
+const monthGrid = { 
+  display: 'grid', 
+  gridTemplateColumns: 'repeat(4, 1fr)', // 6列から4列にして1つ1つを大きくしました
+  gap: '15px', 
+  marginBottom: '50px' 
+};
+
+const monthBtn = { 
+  padding: '25px 10px', 
+  border: '2px solid #e0d6cc', 
+  borderRadius: '18px', 
+  cursor: 'pointer', 
+  fontWeight: '900', 
+  fontSize: '22px', // 月の文字を特大に
+  transition: '0.2s'
+};
+
+const actionArea = { 
+  marginTop: '30px', 
+  paddingTop: '40px', 
+  borderTop: '3px dashed #f2ede9', 
+  textAlign: 'center' 
+};
+
+const statusBadge = { 
+  display: 'inline-block', 
+  padding: '15px 35px', 
+  backgroundColor: '#f0fdf4', 
+  color: '#2d6a4f', 
+  borderRadius: '40px', 
+  marginBottom: '35px', 
+  fontSize: '18px',
+  fontWeight: '800',
+  border: '1px solid #c8e6c9'
+};
+
+const printMainBtn = { 
+  padding: '25px 50px', 
+  backgroundColor: '#4a3728', 
+  color: 'white', 
+  border: 'none', 
+  borderRadius: '20px', 
+  fontSize: '24px', // 発行ボタンを最大に
+  fontWeight: '900', 
+  cursor: 'pointer', 
+  boxShadow: '0 10px 25px rgba(74, 55, 40, 0.3)', 
+  width: '100%',
+  transition: '0.3s'
+};

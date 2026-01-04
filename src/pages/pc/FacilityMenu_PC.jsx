@@ -8,27 +8,26 @@ import FacilityThanks_PC from './FacilityThanks_PC';
 import FacilityScheduleManager_PC from './FacilityScheduleManager_PC'; 
 import FacilityVisitHistory_PC from './FacilityVisitHistory_PC';
 import FacilityInvoice_PC from './FacilityInvoice_PC'; 
-// 🌟 追加：プリント用コンポーネントをインポート
 import PrintUserList_PC from './PrintUserList_PC';
+import Manual_PC from './Manual_PC'; 
 
 export default function FacilityMenu_PC({ 
   user, page, setPage, users, bookingList, historyList, keepDates, 
   ngDates, refreshAllData, selectedMembers, setSelectedMembers, 
   scheduleTimes, setScheduleTimes, finalizeBooking, checkDateSelectable    
 }) {
-  // 初期タブ判定
+  // --- ロジック保持：初期タブ判定 ---
   const [activeTab, setActiveTab] = useState(() => {
     if (['confirm', 'timeselect', 'preview', 'thanks'].includes(page)) {
       return 'confirm';
     }
-    // 🌟 完了画面から 'schedule' が送られてきた時の対策
     if (page === 'schedule') return 'schedule-manager';
-    // 🌟 プリントページからの戻り対策
     if (page === 'print-userlist') return 'print-userlist';
+    if (page === 'manual') return 'manual'; 
     return page === 'menu' ? 'user-list' : page;
   });
 
-  // 🌟 App.jsx側のページ変更とサイドバーを同期
+  // --- ロジック保持：同期処理 ---
   useEffect(() => {
     if (['confirm', 'timeselect', 'preview', 'thanks'].includes(page)) {
       setActiveTab('confirm');
@@ -36,6 +35,8 @@ export default function FacilityMenu_PC({
       setActiveTab('schedule-manager');
     } else if (page === 'print-userlist') {
       setActiveTab('print-userlist');
+    } else if (page === 'manual') {
+      setActiveTab('manual');
     } else if (page !== 'menu') {
       setActiveTab(page);
     }
@@ -49,63 +50,76 @@ export default function FacilityMenu_PC({
 
   return (
     <div style={pcLayoutStyle}>
-      {/* --- 左側：施設専用サイドバー --- */}
+      {/* --- 左側：施設専用サイドバー（アンティーク・ダークウッド） --- */}
       <aside style={sidebarStyle}>
         <div style={sidebarHeader}>
-          <h2 style={{margin: 0, fontSize: '18px'}}>SnipSnap <span style={{fontSize:'12px'}}>施設様用</span></h2>
-          <p style={{fontSize: '12px', opacity: 0.8, marginTop: '5px'}}>{user?.name} 御中</p>
+          <h2 style={brandTitleStyle}>SnipSnap</h2>
+          <div style={subTitleStyle}>FOR FACILITY</div>
+          <div style={userBadgeStyle}>
+             <span style={{opacity: 0.7, fontSize: '12px'}}>Welcome,</span><br/>
+             <span style={{fontSize: '18px', fontWeight: '900'}}>{user?.name} 様</span>
+          </div>
         </div>
         
         <nav style={navStyle}>
           <button 
             onClick={() => { setActiveTab('user-list'); setPage('menu'); }}
-            style={{...navBtnStyle, backgroundColor: activeTab === 'user-list' ? 'rgba(255,255,255,0.2)' : 'transparent'}}
+            style={{...navBtnStyle, backgroundColor: activeTab === 'user-list' ? '#d4a017' : 'transparent', color: activeTab === 'user-list' ? '#fff' : '#e0d6cc'}}
           >
             👥 あつまれ綺麗にする人
           </button>
 
           <button 
             onClick={() => { setActiveTab('calendar'); setPage('menu'); }} 
-            style={{...navBtnStyle, backgroundColor: activeTab === 'calendar' ? 'rgba(255,255,255,0.2)' : 'transparent'}}
+            style={{...navBtnStyle, backgroundColor: activeTab === 'calendar' ? '#d4a017' : 'transparent', color: activeTab === 'calendar' ? '#fff' : '#e0d6cc'}}
           >
             📅 キープ！この日とった！
           </button>
 
           <button 
             onClick={() => { setActiveTab('confirm'); setPage('confirm'); }} 
-            style={{...navBtnStyle, backgroundColor: activeTab === 'confirm' ? '#2d6a4f' : 'transparent'}}
+            style={{...navBtnStyle, backgroundColor: activeTab === 'confirm' ? '#2d6a4f' : 'transparent', border: activeTab === 'confirm' ? '2px solid #52b69a' : '2px solid transparent', color: '#fff'}}
           >
             ✅ これで決まり！予約確定！
           </button>
 
           <button 
             onClick={() => { setActiveTab('schedule-manager'); setPage('menu'); }}
-            style={{...navBtnStyle, backgroundColor: activeTab === 'schedule-manager' ? 'rgba(255,255,255,0.2)' : 'transparent'}}
+            style={{...navBtnStyle, backgroundColor: activeTab === 'schedule-manager' ? '#d4a017' : 'transparent', color: activeTab === 'schedule-manager' ? '#fff' : '#e0d6cc'}}
           >
             📊 予約の状況・進捗
           </button>
 
-          {/* 🌟 追加：掲示用名簿プリントボタン */}
           <button 
             onClick={() => { setActiveTab('print-userlist'); setPage('print-userlist'); }}
-            style={{...navBtnStyle, backgroundColor: activeTab === 'print-userlist' ? '#3b82f6' : 'transparent'}}
+            style={{...navBtnStyle, backgroundColor: activeTab === 'print-userlist' ? '#d4a017' : 'transparent', color: activeTab === 'print-userlist' ? '#fff' : '#e0d6cc'}}
           >
             🖨️ 掲示用名簿をプリント
           </button>
 
           <button 
             onClick={() => { setActiveTab('history'); setPage('menu'); }}
-            style={{...navBtnStyle, backgroundColor: activeTab === 'history' ? 'rgba(255,255,255,0.2)' : 'transparent'}}
+            style={{...navBtnStyle, backgroundColor: activeTab === 'history' ? '#d4a017' : 'transparent', color: activeTab === 'history' ? '#fff' : '#e0d6cc'}}
           >
             📜 過去の訪問記録
           </button>
 
           <button 
             onClick={() => { setActiveTab('invoice'); setPage('menu'); }}
-            style={{...navBtnStyle, backgroundColor: activeTab === 'invoice' ? 'rgba(255,255,255,0.2)' : 'transparent'}}
+            style={{...navBtnStyle, backgroundColor: activeTab === 'invoice' ? '#d4a017' : 'transparent', color: activeTab === 'invoice' ? '#fff' : '#e0d6cc'}}
           >
             📑 請求・利用明細
           </button>
+
+          {/* 🌟 使い方ガイド（ボトム配置） */}
+          <div style={{ marginTop: 'auto', paddingTop: '30px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <button 
+              onClick={() => { setActiveTab('manual'); setPage('manual'); }}
+              style={{...navBtnStyle, backgroundColor: activeTab === 'manual' ? '#ed8936' : 'rgba(255,255,255,0.05)', color: '#fff', textAlign: 'center', fontSize: '16px'}}
+            >
+              💡 使い方ガイド
+            </button>
+          </div>
         </nav>
       </aside>
 
@@ -123,15 +137,12 @@ export default function FacilityMenu_PC({
           <FacilityScheduleManager_PC keepDates={keepDates} bookingList={bookingList} historyList={historyList} user={user} />
         )}
 
-        {/* 🌟 追加：プリントコンポーネントの表示 */}
         {activeTab === 'print-userlist' && (
-          <PrintUserList_PC 
-            users={users} 
-            historyList={historyList} 
-            keepDates={keepDates} 
-            facilityName={user.name} 
-            setPage={setPage} 
-          />
+          <PrintUserList_PC users={users} historyList={historyList} keepDates={keepDates} facilityName={user.name} setPage={setPage} />
+        )}
+
+        {activeTab === 'manual' && (
+          <Manual_PC />
         )}
 
         {activeTab === 'confirm' && (
@@ -163,10 +174,83 @@ export default function FacilityMenu_PC({
   );
 }
 
-// スタイルは変更なし
-const pcLayoutStyle = { display: 'flex', height: '100vh', width: '100%', backgroundColor: '#f0f4f8', overflow: 'hidden' };
-const sidebarStyle = { width: '260px', minWidth: '260px', backgroundColor: '#2d3748', color: 'white', display: 'flex', flexDirection: 'column' };
-const sidebarHeader = { padding: '30px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)' };
-const navStyle = { flex: 1, padding: '20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' };
-const navBtnStyle = { width: '100%', padding: '12px 15px', backgroundColor: 'transparent', border: 'none', color: 'white', textAlign: 'left', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', transition: '0.2s' };
-const mainContentStyle = { flex: 1, padding: '40px', overflowY: 'auto', position: 'relative' };
+// 🎨 スタイル設定（アンティーク・ラグジュアリー版）
+const pcLayoutStyle = { 
+  display: 'flex', 
+  height: '100vh', 
+  width: '100%', 
+  backgroundColor: '#f9f7f5', 
+  overflow: 'hidden',
+  fontFamily: '"Hiragino Kaku Gothic ProN", "Meiryo", sans-serif'
+};
+
+const sidebarStyle = { 
+  width: '300px', 
+  minWidth: '300px', 
+  backgroundColor: '#2d1e14', // より深いこげ茶（木目のような深み）
+  color: 'white', 
+  display: 'flex', 
+  flexDirection: 'column',
+  boxShadow: '4px 0 15px rgba(0,0,0,0.2)',
+  zIndex: 100
+};
+
+const sidebarHeader = { 
+  padding: '40px 25px', 
+  borderBottom: '1px solid rgba(255,255,255,0.1)',
+  textAlign: 'center'
+};
+
+const brandTitleStyle = { 
+  margin: 0, 
+  fontSize: '32px', 
+  fontWeight: '900', 
+  letterSpacing: '0.1em',
+  color: '#d4a017' // ゴールド
+};
+
+const subTitleStyle = {
+  fontSize: '10px',
+  letterSpacing: '0.3em',
+  marginTop: '5px',
+  opacity: 0.6,
+  fontWeight: 'bold'
+};
+
+const userBadgeStyle = {
+  marginTop: '25px',
+  padding: '15px',
+  backgroundColor: 'rgba(255,255,255,0.05)',
+  borderRadius: '15px',
+  border: '1px solid rgba(212, 160, 23, 0.2)'
+};
+
+const navStyle = { 
+  flex: 1, 
+  padding: '30px 15px', 
+  display: 'flex', 
+  flexDirection: 'column', 
+  gap: '12px' 
+};
+
+const navBtnStyle = { 
+  width: '100%', 
+  padding: '18px 20px', 
+  border: 'none', 
+  textAlign: 'left', 
+  borderRadius: '15px', 
+  cursor: 'pointer', 
+  fontSize: '16px', 
+  fontWeight: '800', 
+  transition: '0.3s ease',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px'
+};
+
+const mainContentStyle = { 
+  flex: 1, 
+  padding: '40px', 
+  overflowY: 'auto', 
+  position: 'relative' 
+};
