@@ -22,7 +22,8 @@ export default function TaskMode_PC({
   const doneListRef = useRef(null);
   const finishBtnRef = useRef(null);
   const [showConfirmPopup, setShowConfirmPopup] = useState(false);
-  
+  const [saveMessage, setSaveMessage] = useState(""); // 🌟 保存メッセージ用の状態
+
   // 日付形式の不一致を解消
   const formatDateForCompare = (dateStr) => {
     if (!dateStr) return "";
@@ -87,17 +88,14 @@ export default function TaskMode_PC({
     else completeTask(m, hopeMenus.join('＆') || 'カット');
   };
 
-  // 🌟【修正箇所】キーワード判定による価格決定ロジック
+  // 🌟【価格判定ロジック】キーワード判定
   const completeTask = async (m, finalMenu, colorNum = "") => {
     const menuName = finalMenu + (colorNum ? ` ${colorNum}` : "");
-    
-    // 価格決定ロジック（InvoiceManager_PC.jsxと同じ命令）
     let price = 0;
     const basePrices = {
-      'カット': 1600, 'カラー': 5600, 'パーマ': 4600,
+      'カット': 1600, 'カラー': 5600, 'パーま': 4600,
       'カラー（リタッチ）': 4600, 'カラー（全体）': 5600
     };
-
     if (basePrices[finalMenu]) {
       price = basePrices[finalMenu];
     } else if (finalMenu.includes('カラー')) {
@@ -143,6 +141,24 @@ export default function TaskMode_PC({
     await supabase.from('bookings').upsert(updatedBooking);
   };
 
+  // 🌟【新設】保存して戻る処理
+  const handleFinalSave = async () => {
+    try {
+      setSaveMessage("クラウドに保存中...");
+      if (currentBooking) {
+        await supabase.from('bookings').upsert(currentBooking, { onConflict: 'id' });
+      }
+      setSaveMessage("保存しました！");
+      setTimeout(() => { 
+        setSaveMessage("");
+        setPage('admin-top'); 
+      }, 1000);
+    } catch (error) {
+      setSaveMessage("保存に失敗しました");
+      setTimeout(() => setSaveMessage(""), 3000);
+    }
+  };
+
   const closeAllModals = () => {
     setShowColorTypePicker(null); setShowColorNumberPicker(null); setShowReset(null);
   };
@@ -160,7 +176,8 @@ export default function TaskMode_PC({
           </div>
           <div style={{display:'flex', gap:'10px'}}>
              <button onClick={() => setShowAddMember(true)} style={addMemberBtn}>＋ 当日追加</button>
-             <button onClick={() => setPage('admin-top')} style={saveBtn}>一時中断</button>
+             {/* 🌟 ボタン名を変更し、保存アクションを紐付け */}
+             <button onClick={handleFinalSave} style={saveBtn}>今日はここまで</button>
           </div>
         </div>
       </div>
@@ -226,6 +243,11 @@ export default function TaskMode_PC({
         </section>
       </div>
 
+      {/* 🌟 通知用トースト(ポップアップ) */}
+      {saveMessage && (
+        <div style={toastStyle}>{saveMessage}</div>
+      )}
+
       {/* 🌟 ポップアップの中で「消さない仕様」のモバイル版画面を呼び出す */}
       {showConfirmPopup && (
         <div style={fullOverlayStyle} onClick={() => setShowConfirmPopup(false)}>
@@ -235,12 +257,10 @@ export default function TaskMode_PC({
               bookingList={bookingList}
               facilityName={activeFacility}
               user={user}
-              // モバイル版の戻る処理と、完了後の遷移先を管理
               setPage={(target) => {
                 if (target === 'task') setShowConfirmPopup(false);
-                else setPage(target); // 完了時は admin-history へ
+                else setPage(target); 
               }}
-              // 🌟 ここが重要：bookingsテーブルから「削除」せず、最新化するだけ
               completeFacilityBooking={async () => {
                 if (refreshAllData) await refreshAllData();
                 setShowConfirmPopup(false);
@@ -309,7 +329,9 @@ export default function TaskMode_PC({
   );
 }
 
-// 🎨 スタイル設定（変更なし）
+// 🎨 スタイル設定（通知用の toastStyle を追加、saveBtn を青色に変更）
+const toastStyle = { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', backgroundColor: 'rgba(30, 58, 138, 0.9)', color: 'white', padding: '16px 32px', borderRadius: '50px', zIndex: 20000, fontWeight: 'bold', fontSize: '18px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', pointerEvents: 'none' };
+const saveBtn = { padding: '8px 20px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' };
 const finishBtnStyle = { width: '100%', padding: '25px', backgroundColor: '#ff85d0', color: 'white', border: 'none', borderRadius: '20px', fontSize: '24px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 10px 20px rgba(255, 133, 208, 0.3)', transition: '0.3s' };
 const headerPanelStyle = { backgroundColor:'white', padding:'15px 25px', borderBottom:'1px solid #e2e8f0' };
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', backgroundColor:'#f8fafc' };
@@ -338,7 +360,6 @@ const menuChoiceBtn = { padding:'20px 10px', borderRadius:'12px', border:'2px so
 const colorGrid = { display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:'8px', marginTop:'15px' };
 const colorBtnStyle = { padding:'12px 2px', border:'1px solid #cbd5e1', borderRadius:'6px', cursor:'pointer' };
 const modalCloseBtn = { marginTop:'10px', width:'100%', padding:'10px', border:'none', color:'#64748b', cursor:'pointer' };
-const saveBtn = { padding:'8px 20px', backgroundColor:'#64748b', color:'white', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer' };
 const roomNumStyle = { fontSize:'12px', color:'#64748b' };
 const fullOverlayStyle = { position:'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 10000, display:'flex', justifyContent:'center', alignItems:'center', backdropFilter: 'blur(4px)' };
 const popupWrapperStyle = { backgroundColor: 'white', width: '90%', maxWidth: '600px', height: '90vh', borderRadius: '32px', overflowY: 'auto' };
