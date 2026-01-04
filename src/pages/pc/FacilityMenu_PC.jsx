@@ -8,6 +8,8 @@ import FacilityThanks_PC from './FacilityThanks_PC';
 import FacilityScheduleManager_PC from './FacilityScheduleManager_PC'; 
 import FacilityVisitHistory_PC from './FacilityVisitHistory_PC';
 import FacilityInvoice_PC from './FacilityInvoice_PC'; 
+// 🌟 追加：プリント用コンポーネントをインポート
+import PrintUserList_PC from './PrintUserList_PC';
 
 export default function FacilityMenu_PC({ 
   user, page, setPage, users, bookingList, historyList, keepDates, 
@@ -21,6 +23,8 @@ export default function FacilityMenu_PC({
     }
     // 🌟 完了画面から 'schedule' が送られてきた時の対策
     if (page === 'schedule') return 'schedule-manager';
+    // 🌟 プリントページからの戻り対策
+    if (page === 'print-userlist') return 'print-userlist';
     return page === 'menu' ? 'user-list' : page;
   });
 
@@ -29,8 +33,9 @@ export default function FacilityMenu_PC({
     if (['confirm', 'timeselect', 'preview', 'thanks'].includes(page)) {
       setActiveTab('confirm');
     } else if (page === 'schedule') {
-      // 🌟 ここ！完了画面のボタンから来た時にタブを「進捗」に切り替える
       setActiveTab('schedule-manager');
+    } else if (page === 'print-userlist') {
+      setActiveTab('print-userlist');
     } else if (page !== 'menu') {
       setActiveTab(page);
     }
@@ -80,6 +85,14 @@ export default function FacilityMenu_PC({
             📊 予約の状況・進捗
           </button>
 
+          {/* 🌟 追加：掲示用名簿プリントボタン */}
+          <button 
+            onClick={() => { setActiveTab('print-userlist'); setPage('print-userlist'); }}
+            style={{...navBtnStyle, backgroundColor: activeTab === 'print-userlist' ? '#3b82f6' : 'transparent'}}
+          >
+            🖨️ 掲示用名簿をプリント
+          </button>
+
           <button 
             onClick={() => { setActiveTab('history'); setPage('menu'); }}
             style={{...navBtnStyle, backgroundColor: activeTab === 'history' ? 'rgba(255,255,255,0.2)' : 'transparent'}}
@@ -106,9 +119,19 @@ export default function FacilityMenu_PC({
           <FacilityKeepDate_PC user={user} keepDates={keepDates} bookingList={bookingList} ngDates={ngDates} setPage={setPage} refreshAllData={refreshAllData} checkDateSelectable={checkDateSelectable} />
         )}
 
-        {/* 🌟 page が 'schedule' の時もここを表示するように条件を強化 */}
         {(activeTab === 'schedule-manager' || page === 'schedule') && (
           <FacilityScheduleManager_PC keepDates={keepDates} bookingList={bookingList} historyList={historyList} user={user} />
+        )}
+
+        {/* 🌟 追加：プリントコンポーネントの表示 */}
+        {activeTab === 'print-userlist' && (
+          <PrintUserList_PC 
+            users={users} 
+            historyList={historyList} 
+            keepDates={keepDates} 
+            facilityName={user.name} 
+            setPage={setPage} 
+          />
         )}
 
         {activeTab === 'confirm' && (

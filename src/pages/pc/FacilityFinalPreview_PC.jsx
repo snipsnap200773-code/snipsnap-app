@@ -60,7 +60,7 @@ export default function FacilityFinalPreview_PC({
     const templateParams = {
       facility_name: user?.name || user?.facilityName || user?.facility_name || "施設名取得エラー",
       facility_email: user?.email || user?.details?.email || "", 
-      admin_email: "snipsnap.2007.7.3@gmail.com", 
+      admin_email: "h.snipsnap@gmail.com", 
       visit_month: activeMonth.replace('-', '年 ') + '月',
       date_list: dateListStr,
       member_count: selectedMembers.length,
