@@ -109,8 +109,28 @@ export default function TaskMode({
     setShowReset(null);
   };
 
+  // 🌟【修正箇所】価格決定ロジックの強化（InvoiceManager_PCと同じ命令）
   const completeTask = (m, finalMenu, colorNum = "") => {
-    const price = menuPrices[finalMenu] || 0;
+    let price = 0;
+    const basePrices = {
+      'カット': 1600, 'カラー': 5600, 'パーマ': 4600,
+      'カラー（リタッチ）': 4600, 'カラー（全体）': 5600
+    };
+
+    if (basePrices[finalMenu]) {
+      price = basePrices[finalMenu];
+    } else if (finalMenu.includes('カラー')) {
+      if (finalMenu.includes('カット')) {
+        price = (finalMenu.includes('リタッチ') || finalMenu.includes('(リ)')) ? 6100 : 7100;
+      } else {
+        price = (finalMenu.includes('リタッチ') || finalMenu.includes('(リ)')) ? 4600 : 5600;
+      }
+    } else if (finalMenu.includes('カット')) {
+      price = basePrices['カット'];
+    } else if (finalMenu.includes('パーマ')) {
+      price = basePrices['パーマ'];
+    }
+
     const menuName = finalMenu + (colorNum ? ` ${colorNum}` : "");
 
     setHistoryList(prev => [...prev, {
@@ -125,8 +145,6 @@ export default function TaskMode({
       b.id === currentBooking.id ? { ...b, members: updatedMembers } : b
     ));
 
-    // 🌟【修正】薬剤が選択された場合、colorNum（例: "8-OK"）だけを updateUserNotes に渡す
-    // これにより App.jsx 側の新ロジックで【前回薬剤】行を上書きします
     if (colorNum) updateUserNotes(m.name, activeFacility, colorNum); 
 
     setShowMenu(null); setShowColorPicker(null);
@@ -319,7 +337,7 @@ export default function TaskMode({
   );
 }
 
-// デザイン定数
+// 🎨 デザイン定数は変更なし
 const toastStyle = { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', backgroundColor: 'rgba(30, 58, 138, 0.9)', color: 'white', padding: '16px 32px', borderRadius: '50px', zIndex: 20000, fontWeight: 'bold', fontSize: '17px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', pointerEvents: 'none', animation: 'fadeInOut 1.2s ease-in-out' };
 const fixedHeaderWrapperStyle = { position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '1000px', backgroundColor: '#f0f7f4', zIndex: 1000, padding: '8px 15px', boxSizing: 'border-box', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' };
 const statusRowStyle = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', marginBottom: '8px', padding: '4px 0' };

@@ -87,9 +87,30 @@ export default function TaskMode_PC({
     else completeTask(m, hopeMenus.join('＆') || 'カット');
   };
 
+  // 🌟【修正箇所】キーワード判定による価格決定ロジック
   const completeTask = async (m, finalMenu, colorNum = "") => {
     const menuName = finalMenu + (colorNum ? ` ${colorNum}` : "");
-    const price = menuPrices[finalMenu] || menuPrices[finalMenu.replace(/（.*）/, "")] || 0;
+    
+    // 価格決定ロジック（InvoiceManager_PC.jsxと同じ命令）
+    let price = 0;
+    const basePrices = {
+      'カット': 1600, 'カラー': 5600, 'パーマ': 4600,
+      'カラー（リタッチ）': 4600, 'カラー（全体）': 5600
+    };
+
+    if (basePrices[finalMenu]) {
+      price = basePrices[finalMenu];
+    } else if (finalMenu.includes('カラー')) {
+      if (finalMenu.includes('カット')) {
+        price = (finalMenu.includes('リタッチ') || finalMenu.includes('(リ)')) ? 6100 : 7100;
+      } else {
+        price = (finalMenu.includes('リタッチ') || finalMenu.includes('(リ)')) ? 4600 : 5600;
+      }
+    } else if (finalMenu.includes('カット')) {
+      price = basePrices['カット'];
+    } else if (finalMenu.includes('パーマ')) {
+      price = basePrices['パーマ'];
+    }
 
     setHistoryList(prev => [...prev, {
       date: todaySlash, facility: activeFacility, room: m.room,
@@ -230,7 +251,7 @@ export default function TaskMode_PC({
         </div>
       )}
 
-      {/* --- モーダル・ピック類（以下省略せず維持） --- */}
+      {/* --- モーダル・ピック類 --- */}
       {showAddMember && (
         <div style={overlayStyle} onClick={() => setShowAddMember(false)}>
           <div style={{...modalStyle, width:'500px', maxHeight:'80vh', display:'flex', flexDirection:'column'}} onClick={e => e.stopPropagation()}>
