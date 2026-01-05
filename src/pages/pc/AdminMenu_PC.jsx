@@ -29,7 +29,8 @@ export default function AdminMenu_PC({
   activeFacility,
   updateUserNotes,
   colorList = [],
-  refreshAllData // 🌟 司令塔（App.jsx）からデータ更新関数を受け取る
+  refreshAllData,
+  handleLogout // 🌟 App.jsx から渡される共通ログアウト関数を受け取る
 }) {
   const [activeTab, setActiveTab] = useState('dashboard');
 
@@ -42,6 +43,7 @@ export default function AdminMenu_PC({
 
   return (
     <div style={pcLayoutStyle}>
+      {/* --- 左側：管理者専用サイドバー --- */}
       <aside style={sidebarStyle}>
         <div style={sidebarHeader}>
           <h2 style={sidebarTitleStyle}>
@@ -85,11 +87,20 @@ export default function AdminMenu_PC({
           <button onClick={() => setActiveTab('facility-manager')} style={getNavBtnStyle('facility-manager')}>
             <span style={iconStyle}>🏢</span> 施設情報・登録
           </button>
-        </nav>
 
-        {/* 🌟 モバイル戻るボタンがあった footer エリアを削除しました */}
+          {/* 🌟 サイドバー最下部にログアウトエリアを追加 */}
+          <div style={sidebarFooterStyle}>
+            <button 
+              onClick={() => { if(window.confirm('ログアウトしてログイン画面に戻りますか？')) handleLogout(); }}
+              style={logoutBtnStyle}
+            >
+              <span style={iconStyle}>🚪</span> 強制ログアウト
+            </button>
+          </div>
+        </nav>
       </aside>
 
+      {/* --- 右側：メインコンテンツ --- */}
       <main style={mainContentStyle}>
         <div style={contentInnerStyle}>
           {activeTab === 'dashboard' && (
@@ -104,7 +115,7 @@ export default function AdminMenu_PC({
               keepDates={keepDates} 
               historyList={historyList}
               checkDateSelectable={checkDateSelectable}
-              refreshAllData={refreshAllData} // 🌟 バケツリレー
+              refreshAllData={refreshAllData} 
             />
           )}
 
@@ -116,7 +127,7 @@ export default function AdminMenu_PC({
               setKeepDates={setKeepDates}
               historyList={historyList} 
               allUsers={users}
-              refreshAllData={refreshAllData} // 🌟 バケツリレー
+              refreshAllData={refreshAllData} 
             />
           )}
 
@@ -133,7 +144,7 @@ export default function AdminMenu_PC({
               setActiveFacility={setActiveFacility} 
               updateUserNotes={updateUserNotes}
               colorList={colorList} 
-              refreshAllData={refreshAllData} // 🌟 バケツリレー
+              refreshAllData={refreshAllData} 
               menuPrices={{
                 'カット': 1600, 'カラー（リタッチ）': 4600, 'カラー（全体）': 5600, 'パーマ': 4600,
                 'カット＋カラー（リタッチ）': 6100, 'カット＋カラー（全体）': 7100, 'カット＋パーマ': 6100,
@@ -160,14 +171,14 @@ export default function AdminMenu_PC({
               setUsers={setUsers} 
               facilityMaster={dbFacilities} 
               historyList={historyList} 
-              refreshAllData={refreshAllData} // 🌟 バケツリレー
+              refreshAllData={refreshAllData} 
             />
           )}
 
           {activeTab === 'facility-manager' && (
             <AdminFacilityList_PC 
               dbFacilities={dbFacilities} 
-              refreshAllData={refreshAllData} // 🌟 バケツリレー
+              refreshAllData={refreshAllData} 
             />
           )}
 
@@ -177,7 +188,7 @@ export default function AdminMenu_PC({
               setPage={() => setActiveTab('task-input')}
               historyList={historyList}
               bookingList={bookingList}
-              refreshAllData={refreshAllData} // 🌟 バケツリレー
+              refreshAllData={refreshAllData} 
             />
           )}
         </div>
@@ -199,3 +210,7 @@ const navBtnStyle = { width: '100%', padding: '14px 24px', backgroundColor: 'tra
 const iconStyle = { marginRight: '12px', fontSize: '18px' };
 const mainContentStyle = { flex: 1, overflowY: 'auto', height: '100vh', boxSizing: 'border-box', position: 'relative' };
 const contentInnerStyle = { padding: '40px min(5vw, 60px)', maxWidth: '1600px', margin: '0 auto' };
+
+// 🌟 ログアウトボタン用の追加スタイル
+const sidebarFooterStyle = { marginTop: 'auto', padding: '20px 0', borderTop: '1px solid rgba(255,255,255,0.05)' };
+const logoutBtnStyle = { ...navBtnStyle, color: '#fca5a5', transition: '0.3s' };

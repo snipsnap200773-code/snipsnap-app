@@ -66,19 +66,35 @@ export default function AdminScheduleManager_PC({
 
   const monthKey = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth() + 1).padStart(2, '0')}`;
   
-  // 🌟 施設リストを bookingList, keepDates, historyList 全てから抽出（漏れをなくす）
-  const facilities = Array.from(new Set([
+  // 🌟 施設リストを bookingList, keepDates, historyList 全てから抽出
+  const facilitiesRaw = Array.from(new Set([
     ...bookingList.map(b => b.facility),
     ...keepDates.map(k => k.facility),
     ...historyList.map(h => h.facility)
   ])).filter(Boolean);
+
+  // 🌟【重要：並び替えロジック】一番日が近い予約順に並べる
+  const sortedFacilities = facilitiesRaw.sort((facA, facB) => {
+    // それぞれの施設における「今月の最初の日付」を見つける
+    const getFirstDate = (facName) => {
+      const allDates = [
+        ...bookingList.filter(b => b.facility === facName && b.date.startsWith(monthKey)).map(b => b.date),
+        ...keepDates.filter(k => k.facility === facName && k.date.startsWith(monthKey)).map(k => k.date)
+      ].sort();
+      return allDates.length > 0 ? allDates[0] : "9999-99-99"; // 日付がない施設は最後に飛ばす
+    };
+
+    const firstA = getFirstDate(facA);
+    const firstB = getFirstDate(facB);
+    return firstA.localeCompare(firstB);
+  });
 
   return (
     <div style={containerStyle}>
       <header style={headerStyle}>
         <div>
           <h2 style={{margin:0, color: '#1e3a8a'}}>📊 予約・進捗管理マスター (PC)</h2>
-          <p style={{fontSize:'14px', color:'#64748b'}}>施設ごとの進捗確認と、月末の終了処理を行えます</p>
+          <p style={{fontSize:'14px', color:'#64748b'}}>施設ごとの進捗確認と、月末の終了処理を行えます（直近予約順）</p>
         </div>
         <div style={navGroup}>
           <button onClick={() => setCurrentViewDate(new Date(currentViewDate.getFullYear(), currentViewDate.getMonth() - 1, 1))} style={iconBtnStyle}>◀</button>
@@ -88,8 +104,7 @@ export default function AdminScheduleManager_PC({
       </header>
 
       <div style={scrollArea}>
-        {facilities.sort().map(facility => {
-          // 🌟 履歴データからも日付を拾うように修正
+        {sortedFacilities.map(facility => {
           const historyDates = historyList
             .filter(h => h.facility === facility && h.date.startsWith(monthKey.replace(/-/g, '/')))
             .map(h => h.date.replace(/\//g, '-'));
@@ -97,16 +112,14 @@ export default function AdminScheduleManager_PC({
           const items = [
             ...bookingList.filter(b => b.facility === facility && b.date.startsWith(monthKey)), 
             ...keepDates.filter(kd => kd.facility === facility && kd.date.startsWith(monthKey)),
-            ...historyDates.map(d => ({ date: d, facility, members: [] })) // 履歴がある日もリストに加える
+            ...historyDates.map(d => ({ date: d, facility, members: [] })) 
           ].sort((a, b) => a.date.localeCompare(b.date));
           
-          // 重複削除（dateが同じものはbookingListを最優先にする）
           const uniqueItems = items.reduce((acc, current) => {
             const existing = acc.find(item => item.date === current.date);
             if (!existing) {
               acc.push(current);
             } else if (current.members && current.members.length > 0) {
-              // membersがある方（bookingListデータ）を優先して上書き
               const idx = acc.findIndex(item => item.date === current.date);
               acc[idx] = current;
             }
@@ -125,8 +138,6 @@ export default function AdminScheduleManager_PC({
                 {uniqueItems.map((item, idx) => {
                   const dateSlash = formatDateForCompare(item.date);
                   const finishedOnDayCount = historyList.filter(h => h.date === dateSlash && h.facility === facility).length;
-                  
-                  // bookingListから実データを取得
                   const realBooking = bookingList.find(b => b.date === item.date && b.facility === facility);
                   const isConfirmed = !!realBooking;
                   
@@ -162,7 +173,6 @@ export default function AdminScheduleManager_PC({
         })}
       </div>
 
-      {/* ポップアップ（selectedDetail）は以前のコードと同様のため維持 */}
       {selectedDetail && (() => {
         const { facility, date } = selectedDetail;
         const dateSlash = formatDateForCompare(date);
@@ -175,7 +185,6 @@ export default function AdminScheduleManager_PC({
         const allCandidates = [...currentMembers, ...extraMembers];
         const doneList = allCandidates.filter(m => finishedOnDay.some(h => h.name === m.name));
         const cancelList = allCandidates.filter(m => m.status === 'cancel');
-        const yetList = allCandidates.filter(m => !finishedOnDay.some(h => h.name === m.name) && m.status !== 'cancel');
 
         const sortFn = (list, key) => [...list].sort((a, b) => 
           key === 'room' ? String(a.room).localeCompare(String(b.room), undefined, { numeric: true }) 
@@ -216,7 +225,7 @@ export default function AdminScheduleManager_PC({
   );
 }
 
-// 🎨 スタイル設定（既存のものを維持）
+// 🎨 スタイル設定（変更なし）
 const containerStyle = { display: 'flex', flexDirection: 'column', height: '100%', gap: '20px' };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
 const navGroup = { display: 'flex', alignItems: 'center', gap: '15px' };
@@ -232,14 +241,8 @@ const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, width: '100vw', 
 const modalContentStyle = { backgroundColor: 'white', width: '90%', maxWidth: '600px', borderRadius: '24px', padding: '30px' };
 const modalHeaderStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' };
 const closeXStyle = { background: 'none', border: 'none', fontSize: '32px', color: '#94a3b8', cursor: 'pointer' };
-const finishedDayBoxStyle = { marginBottom: '20px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0' };
+const finishedDayBoxStyle = { marginBottom: '20px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #e2d6cc' };
 const finishedDayTitleStyle = { fontSize: '13px', fontWeight: 'bold', color: '#64748b' };
 const memberRowStyle = { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #f1f5f9', alignItems: 'center', fontSize: '15px' };
 const finishedBadgeStyle = { fontSize: '11px', color: '#10b981', fontWeight: 'bold', backgroundColor: '#ecfdf5', padding: '3px 10px', borderRadius: '8px' };
-const remainingBoxStyle = { padding: '15px', backgroundColor: '#f0fdf4', borderRadius: '16px', border: '2px solid #2d6a4f' };
-const remainingHeaderStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', color: '#2d6a4f', fontSize: '15px', fontWeight: 'bold' };
-const allDoneTextStyle = { textAlign: 'center', color: '#2d6a4f', fontSize: '15px', padding: '10px', fontWeight: 'bold' };
-const menuBadgeStyle = { fontSize: '11px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '3px 10px', borderRadius: '8px' };
-const extraBadgeStyle = { fontSize: '10px', backgroundColor: '#dbeafe', color: '#1e40af', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px' };
-const miniSortBtnStyle = { border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 10px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' };
 const closeBtnStyle = { width: '100%', marginTop: '20px', padding: '15px', backgroundColor: '#1e3a8a', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' };

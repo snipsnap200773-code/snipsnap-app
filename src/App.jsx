@@ -385,6 +385,7 @@ function App() {
               keepDates={keepDates} setKeepDates={setManualKeepDatesWithSync}
               checkDateSelectable={checkDateSelectable}
               updateUserNotes={updateUserNotes} refreshAllData={refreshAllData}
+              handleLogout={handleLogout}
             />
           ) : (
             <div className="mobile-view-container" style={{width:'100%'}}>
