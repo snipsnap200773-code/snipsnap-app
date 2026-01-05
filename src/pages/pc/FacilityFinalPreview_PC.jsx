@@ -11,11 +11,15 @@ export default function FacilityFinalPreview_PC({
 }) {
   const [isSending, setIsSending] = useState(false);
 
-  // ロジック保持
-  const sortedKeepDates = [...keepDates].sort();
-  const firstDate = sortedKeepDates[0];
+  // 🌟【鉄壁ガード】混在データから安全に日付文字列を取得し、ソート
+  const myKeepDates = keepDates
+    .map(d => (typeof d === 'string' ? d : d?.date))
+    .filter(Boolean)
+    .sort();
+
+  const firstDate = myKeepDates[0] || "";
   const activeMonth = firstDate ? firstDate.substring(0, 7) : "";
-  const activeDates = keepDates.filter(date => date.startsWith(activeMonth));
+  const activeDates = myKeepDates.filter(date => date.startsWith(activeMonth));
 
   const [sortKey, setSortKey] = useState('room'); 
   const [sortOrder, setSortOrder] = useState('asc'); 
@@ -65,7 +69,9 @@ export default function FacilityFinalPreview_PC({
     };
 
     try {
+      // 🌟 三土手さんへの通知
       await emailjs.send('service_ty8h26r', 'template_6tos45t', templateParams, '4QQyusD3MBj0A0aa9');
+      // 🌟 施設様への通知
       await emailjs.send('service_ty8h26r', 'template_o1n3dud', templateParams, '4QQyusD3MBj0A0aa9');
     } catch (error) {
       console.error('メール送信失敗:', error);
@@ -152,7 +158,7 @@ export default function FacilityFinalPreview_PC({
   );
 }
 
-// 🎨 デザインスタイル（文字特大・アンティーク版）
+// 🎨 デザインスタイル
 const containerStyle = { display: 'flex', flexDirection: 'column', height: '100%', gap: '25px', fontFamily: '"Hiragino Kaku Gothic ProN", "Meiryo", sans-serif' };
 const headerStyle = { backgroundColor: 'white', padding: '24px 35px', borderRadius: '25px', boxShadow: '0 4px 12px rgba(74, 55, 40, 0.08)' };
 const contentWrapperStyle = { flex: 1, display: 'flex', gap: '30px', minHeight: 0, marginBottom: '100px' };

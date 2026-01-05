@@ -69,10 +69,14 @@ export default function FacilityConfirmBooking_PC({
     const isAdded = selectedMembers.find(m => m.id === u.id);
     const newSelectedStatus = !isAdded;
 
-    // 1. まずDB(Supabase)のフラグを更新（これでリロードしても消えない）
+    // 1. DBのフラグと初期メニュー（カット）を更新
+    // 🌟 選択した瞬間、DBの menus 列に ['カット'] を保存します
     const { error } = await supabase
       .from('members')
-      .update({ is_selected: newSelectedStatus })
+      .update({ 
+        is_selected: newSelectedStatus,
+        menus: newSelectedStatus ? ['カット'] : [] 
+      })
       .eq('id', u.id);
 
     if (error) {
@@ -86,6 +90,7 @@ export default function FacilityConfirmBooking_PC({
       setSelectedMembers(selectedMembers.filter(m => m.id !== u.id));
     } else {
       if (u.facility === user.name) {
+        // 🌟 ここでも「カット」を初期値としてセット
         setSelectedMembers([...selectedMembers, { ...u, menus: ['カット'] }]);
         if (index !== null && leftListRef.current) {
           const nextElement = leftListRef.current.children[index + 1];
@@ -97,11 +102,36 @@ export default function FacilityConfirmBooking_PC({
     }
   };
 
-  const toggleMenu = (userId, menuName) => {
+  // 🌟【重要：メニュー変更の保存】
+  const toggleMenu = async (userId, menuName) => {
+    const target = selectedMembers.find(m => m.id === userId);
+    if (!target) return;
+
+    // 現在のメニューリストを取得して切り替え
+    const currentMenus = target.menus || [];
+    const newMenus = currentMenus.includes(menuName) 
+      ? currentMenus.filter(m => m !== menuName) 
+      : [...currentMenus, menuName];
+    
+    // 🌟 全て外した場合は空配列ではなく、あえて「未選択」状態を許容するか、
+    // あるいはカット等に戻すか選べますが、基本は操作通りの配列をDBへ送ります
+    const finalMenus = newMenus;
+
+    // 1. DBに選んだメニュー配列を即時保存
+    const { error } = await supabase
+      .from('members')
+      .update({ menus: finalMenus })
+      .eq('id', userId);
+
+    if (error) {
+      console.error("メニュー保存失敗:", error);
+      return;
+    }
+
+    // 2. 画面上のStateを更新
     setSelectedMembers(selectedMembers.map(u => {
       if (u.id === userId) {
-        const newMenus = u.menus.includes(menuName) ? u.menus.filter(m => m !== menuName) : [...u.menus, menuName];
-        return { ...u, menus: newMenus.length === 0 ? ['カット'] : newMenus };
+        return { ...u, menus: finalMenus };
       }
       return u;
     }));
@@ -164,7 +194,7 @@ export default function FacilityConfirmBooking_PC({
                     <div style={selectedCardHeader}><span style={{fontWeight:'800', fontSize:'20px', color: '#4a3728'}}>{m.room} {m.name} 様</span></div>
                     <div style={menuFlexContainer}>
                       {simpleMenus.map(menu => {
-                        const isActive = m.menus.includes(menu);
+                        const isActive = m.menus && m.menus.includes(menu);
                         return (
                           <button key={menu} onClick={() => toggleMenu(m.id, menu)}
                             style={{ ...pcMenuBtn, backgroundColor: isActive ? '#2d6a4f' : 'white', color: isActive ? 'white' : '#2d6a4f', border: `2px solid ${isActive ? '#2d6a4f' : '#a39081'}`, flex: 1 }}>
@@ -194,7 +224,7 @@ export default function FacilityConfirmBooking_PC({
   );
 }
 
-// デザインスタイル（アンティーク版維持）
+// デザインスタイル（変更なし）
 const pcWrapperStyle = { display: 'flex', flexDirection: 'column', height: 'calc(100vh - 40px)', width: '100%', position: 'relative', fontFamily: '"Hiragino Kaku Gothic ProN", "Meiryo", sans-serif' };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '24px 30px', borderRadius: '25px', boxShadow: '0 4px 12px rgba(74, 55, 40, 0.08)', marginBottom: '20px' };
 const monthNavStyle = { display: 'flex', alignItems: 'center', gap: '20px', backgroundColor: '#f9f7f5', padding: '10px 20px', borderRadius: '15px', border: '1px solid #e2d6cc' };
@@ -216,4 +246,4 @@ const pcMenuBtn = { padding: '14px 0', borderRadius: '12px', fontSize: '16px', f
 const removeBtnStyle = { padding: '14px 18px', backgroundColor: '#fff5f5', color: '#c62828', border: '2px solid #ef9a9a', borderRadius: '12px', fontSize: '15px', fontWeight: '800', cursor: 'pointer' };
 const emptyMessage = { textAlign: 'center', marginTop: '120px', color: '#a39081', fontSize: '18px', fontWeight: '800' };
 const pcFooterStyle = { position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '25px 40px', backgroundColor: 'white', borderRadius: '30px 30px 0 0', boxShadow: '0 -10px 30px rgba(74, 55, 40, 0.1)', zIndex: 10, border: '1px solid #e2d6cc' };
-const pcConfirmBtn = { padding: '20px 50px', color: 'white', border: 'none', borderRadius: '20px', fontWeight: '800', fontSize: '20px' };
+const pcConfirmBtn = { padding: '20px 50px', backgroundColor: '#2d6a4f', color: 'white', border: 'none', borderRadius: '20px', fontWeight: '800', fontSize: '22px', cursor: 'pointer' };

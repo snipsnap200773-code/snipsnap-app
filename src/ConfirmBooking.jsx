@@ -39,7 +39,8 @@ export default function ConfirmBooking({
   const [sortKey, setSortKey] = useState('room'); 
   const [sortOrder, setSortOrder] = useState('asc'); 
 
-  const availableMenus = Object.keys(menuPrices);
+  // 🌟 メニューをPC版と同じ3つに固定
+  const availableMenus = ['カット', 'カラー', 'パーマ'];
 
   const changeViewMonth = (offset) => {
     setCurrentViewDate(new Date(currentViewDate.getFullYear(), currentViewDate.getMonth() + offset, 1));
@@ -53,12 +54,10 @@ export default function ConfirmBooking({
 
   const currentMonthKey = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth() + 1).padStart(2, '0')}`;
   
-  // 🌟【エラー修正箇所：施設フィルター】
-  // 文字列かオブジェクトかを確認し、安全にプロパティへアクセスします
+  // 🌟【施設フィルター】
   const visibleDates = keepDates.filter(d => {
     const dateStr = typeof d === 'string' ? d : d?.date;
     const facilityName = typeof d === 'string' ? user?.name : d?.facility;
-    // 自分の施設、かつ、表示月の日付であること
     return dateStr && dateStr.startsWith(currentMonthKey) && facilityName === user?.name;
   }).map(d => (typeof d === 'string' ? d : d.date)).sort();
 
@@ -84,15 +83,18 @@ export default function ConfirmBooking({
     }
   };
 
-  // 🌟【自動保存ロジック：施設分離版】
+  // 🌟【自動保存ロジック：メニュー初期値カット版】
   const toggleUserSelection = async (targetUser) => {
     const isAdded = selectedMembers.find(u => u.id === targetUser.id);
     const newSelectedStatus = !isAdded;
 
-    // Supabaseのフラグを更新
+    // 1. Supabaseのフラグと初期メニュー(カット)を更新
     const { error } = await supabase
       .from('members')
-      .update({ is_selected: newSelectedStatus })
+      .update({ 
+        is_selected: newSelectedStatus,
+        menus: newSelectedStatus ? ['カット'] : [] 
+      })
       .eq('id', targetUser.id);
 
     if (error) {
@@ -101,23 +103,44 @@ export default function ConfirmBooking({
       return;
     }
 
+    // 2. 画面上のStateを更新
     if (isAdded) {
       setSelectedMembers(selectedMembers.filter(u => u.id !== targetUser.id));
     } else {
-      // 自分の施設であることを再確認
       if (targetUser.facility === user?.name) {
-        setSelectedMembers([...selectedMembers, { ...targetUser, menus: [availableMenus[0] || 'カット'] }]);
+        setSelectedMembers([...selectedMembers, { ...targetUser, menus: ['カット'] }]);
       }
     }
   };
 
-  const toggleMenu = (userId, menuName) => {
+  // 🌟【メニュー変更の保存】
+  const toggleMenu = async (userId, menuName) => {
+    const target = selectedMembers.find(m => m.id === userId);
+    if (!target) return;
+
+    const currentMenus = target.menus || [];
+    const newMenus = currentMenus.includes(menuName)
+      ? currentMenus.filter(m => m !== menuName)
+      : [...currentMenus, menuName];
+    
+    // 全て外した場合は空配列を許容（カットを外してカラーだけにする等）
+    const finalMenus = newMenus;
+
+    // 1. DBに選んだメニュー配列を即時保存
+    const { error } = await supabase
+      .from('members')
+      .update({ menus: finalMenus })
+      .eq('id', userId);
+
+    if (error) {
+      console.error("メニュー保存失敗:", error);
+      return;
+    }
+
+    // 2. 画面上のStateを更新
     setSelectedMembers(selectedMembers.map(u => {
       if (u.id === userId) {
-        const newMenus = u.menus.includes(menuName)
-          ? u.menus.filter(m => m !== menuName)
-          : [...u.menus, menuName];
-        return { ...u, menus: newMenus.length === 0 ? [availableMenus[0] || 'カット'] : newMenus };
+        return { ...u, menus: finalMenus };
       }
       return u;
     }));
@@ -203,8 +226,8 @@ export default function ConfirmBooking({
                             padding: '8px 4px', 
                             borderRadius: '10px', 
                             border: 'none',
-                            backgroundColor: bookingInfo.menus.includes(menu) ? '#f5a623' : '#f0f0f0',
-                            color: bookingInfo.menus.includes(menu) ? 'white' : '#666',
+                            backgroundColor: bookingInfo.menus && bookingInfo.menus.includes(menu) ? '#f5a623' : '#f0f0f0',
+                            color: bookingInfo.menus && bookingInfo.menus.includes(menu) ? 'white' : '#666',
                             fontSize: '11px', 
                             fontWeight: 'bold'
                           }}
