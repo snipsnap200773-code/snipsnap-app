@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { supabase } from '../../supabase'; // 🌟 保存のために追加
 
 export default function FacilityConfirmBooking_PC({ 
   keepDates = [], 
@@ -10,14 +11,12 @@ export default function FacilityConfirmBooking_PC({
   user 
 }) {
   // 🌟【ロジック復元】自動月判定
-  // 1月の履歴が完了していれば2月、そうでなければ今月を表示
   const [currentViewDate, setCurrentViewDate] = useState(() => {
     const now = new Date();
     const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const currentMonthSlash = currentMonthKey.replace(/-/g, '/');
     const thisMonthHistory = historyList.filter(h => h.facility === user?.name && h.date.startsWith(currentMonthSlash));
     
-    // 全員分の履歴があれば、翌月をデフォルトにする
     const isAllDone = thisMonthHistory.length >= users.length && users.length > 0;
     if (isAllDone) return new Date(now.getFullYear(), now.getMonth() + 1, 1);
     
@@ -43,11 +42,12 @@ export default function FacilityConfirmBooking_PC({
 
   const currentMonthKey = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth() + 1).padStart(2, '0')}`;
 
-  // 🌟【ロジック厳格化】今表示している「特定の月」の日付だけを抽出
+  // 🌟【重要：施設フィルター】自分の施設の、かつ表示月の日付だけを表示
   const visibleDates = keepDates
     .filter(d => {
       const dateStr = typeof d === 'string' ? d : d?.date;
-      return dateStr && dateStr.startsWith(currentMonthKey) && (typeof d === 'string' ? true : d.facility === user.name);
+      const facilityName = typeof d === 'string' ? user.name : d?.facility;
+      return dateStr && dateStr.startsWith(currentMonthKey) && facilityName === user.name;
     })
     .map(d => (typeof d === 'string' ? d : d.date)) 
     .sort();
@@ -64,16 +64,34 @@ export default function FacilityConfirmBooking_PC({
     else { setSortKey(key); setSortOrder('asc'); }
   };
 
-  const toggleUserSelection = (u, index = null) => {
+  // 🌟【重要：保存の瞬間ロジック】DBと同期して自動保存を実現
+  const toggleUserSelection = async (u, index = null) => {
     const isAdded = selectedMembers.find(m => m.id === u.id);
+    const newSelectedStatus = !isAdded;
+
+    // 1. まずDB(Supabase)のフラグを更新（これでリロードしても消えない）
+    const { error } = await supabase
+      .from('members')
+      .update({ is_selected: newSelectedStatus })
+      .eq('id', u.id);
+
+    if (error) {
+      console.error("保存失敗:", error);
+      alert("通信エラーにより選択を保存できませんでした。");
+      return;
+    }
+
+    // 2. 画面上のStateを更新
     if (isAdded) {
       setSelectedMembers(selectedMembers.filter(m => m.id !== u.id));
     } else {
-      setSelectedMembers([...selectedMembers, { ...u, menus: ['カット'] }]);
-      if (index !== null && leftListRef.current) {
-        const nextElement = leftListRef.current.children[index + 1];
-        if (nextElement) {
-          nextElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (u.facility === user.name) {
+        setSelectedMembers([...selectedMembers, { ...u, menus: ['カット'] }]);
+        if (index !== null && leftListRef.current) {
+          const nextElement = leftListRef.current.children[index + 1];
+          if (nextElement) {
+            nextElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
         }
       }
     }
@@ -119,12 +137,12 @@ export default function FacilityConfirmBooking_PC({
               const isSelected = selectedMembers.some(m => m.id === userItem.id);
               return (
                 <div key={userItem.id} onClick={() => toggleUserSelection(userItem, idx)}
-                  style={{ ...userRowStyle, backgroundColor: isSelected ? '#f0f9f1' : 'white', borderColor: isSelected ? '#2d6a4f' : '#e2e8f0' }}>
+                  style={{ ...userRowStyle, backgroundColor: isSelected ? '#f0f9f1' : 'white', borderColor: isSelected ? '#2d6a4f' : '#e2d8f0' }}>
                   <div>
                     <div style={{fontSize:'14px', color:'#8b5e3c', fontWeight: '600'}}>{userItem.floor} {userItem.room}号室</div>
                     <div style={{fontSize:'20px', fontWeight:'800', color: '#4a3728'}}>{userItem.name} 様</div>
                   </div>
-                  <div style={{fontSize:'28px', color: isSelected ? '#2d6a4f' : '#e2e8f0'}}>{isSelected ? '✅' : '＋'}</div>
+                  <div style={{fontSize:'28px', color: isSelected ? '#2d6a4f' : '#e2d6cc'}}>{isSelected ? '✅' : '＋'}</div>
                 </div>
               );
             })}
@@ -176,7 +194,7 @@ export default function FacilityConfirmBooking_PC({
   );
 }
 
-// スタイルは以前のアンティーク版と同じ
+// デザインスタイル（アンティーク版維持）
 const pcWrapperStyle = { display: 'flex', flexDirection: 'column', height: 'calc(100vh - 40px)', width: '100%', position: 'relative', fontFamily: '"Hiragino Kaku Gothic ProN", "Meiryo", sans-serif' };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '24px 30px', borderRadius: '25px', boxShadow: '0 4px 12px rgba(74, 55, 40, 0.08)', marginBottom: '20px' };
 const monthNavStyle = { display: 'flex', alignItems: 'center', gap: '20px', backgroundColor: '#f9f7f5', padding: '10px 20px', borderRadius: '15px', border: '1px solid #e2d6cc' };

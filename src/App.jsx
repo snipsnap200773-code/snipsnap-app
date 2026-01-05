@@ -12,7 +12,9 @@ import ScheduleManager from './ScheduleManager';
 import AdminScheduleManager from './AdminScheduleManager';
 import VisitHistory from './VisitHistory';
 
-// 🌟 移動したメニューを新しい住所（パス）からインポート
+// 🌟 モバイル版 使い方ガイドをインポート
+import Manual from './Manual'; 
+
 import AdminMenu from './pages/mobile/AdminMenu';
 import AdminMenu_PC from './pages/pc/AdminMenu_PC';
 import FacilityMenu_PC from './pages/pc/FacilityMenu_PC';
@@ -44,11 +46,8 @@ function App() {
   const [selectedMembers, setSelectedMembers] = useState([]); 
   const [activeFacility, setActiveFacility] = useState("");
   const [dbFacilities, setDbFacilities] = useState([]);
-
-  // 💻 PCかスマホかを判定するState
   const [isPC, setIsPC] = useState(window.innerWidth > 1024);
 
-  // 🌟 リサイズ時は判定の更新のみを行う
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
@@ -67,7 +66,6 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const secretCode = params.get('admin');
-
     if (secretCode === 'dmaaaahkmm0216') {
       const adminUser = { role: 'barber', name: '三土手さん' };
       localStorage.setItem('saved_user', JSON.stringify(adminUser));
@@ -76,7 +74,6 @@ function App() {
       window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }
-
     const saved = localStorage.getItem('saved_user');
     if (saved) {
       try {
@@ -107,7 +104,13 @@ function App() {
       supabase.from('facilities').select('*')
     ]);
 
-    if (mData) setUsers(mData);
+    if (mData) {
+      setUsers(mData);
+      if (user && user.role === 'facility') {
+        const draftMembers = mData.filter(m => m.facility === user.name && m.is_selected === true);
+        setSelectedMembers(draftMembers.map(m => ({ ...m, menus: m.menus || ['カット'] })));
+      }
+    }
     if (hData) setHistoryList(hData);
     if (bData) setBookingList(bData);
     if (kData) setManualKeepDates(kData);
@@ -123,28 +126,40 @@ function App() {
     }
   }, [user]);
 
-  // 🌟【同期関数：履歴保存用】
+  // 🌟【選択メンバーのDB同期関数】
+  const setSelectedMembersWithSync = async (updateArg) => {
+    const nextMembers = typeof updateArg === 'function' ? updateArg(selectedMembers) : updateArg;
+    
+    if (user && user.role === 'facility') {
+      const facilityUsers = users.filter(u => u.facility === user.name);
+      const updatePromises = facilityUsers.map(u => {
+        const isNowSelected = nextMembers.some(m => m.id === u.id);
+        if (u.is_selected !== isNowSelected) {
+          return supabase.from('members').update({ is_selected: isNowSelected }).eq('id', u.id);
+        }
+        return null;
+      }).filter(p => p !== null);
+
+      if (updatePromises.length > 0) {
+        await Promise.all(updatePromises);
+      }
+    }
+    setSelectedMembers(nextMembers);
+  };
+
   const setHistoryListWithSync = async (updateArg) => {
     const newList = typeof updateArg === 'function' ? updateArg(historyList) : updateArg;
     setHistoryList(newList);
-
     if (newList.length > 0) {
       const dataToSync = newList.map(({ id, created_at, finishTime, ...rest }) => ({
         ...rest,
         date: (rest.date || "").replace(/-/g, '/') 
       }));
-      
       const { error } = await supabase.from('history').upsert(dataToSync, { onConflict: 'date,facility,name' });
-      
-      if (!error) {
-        await refreshAllData();
-      } else {
-        console.error("Supabase Sync Error:", error.message);
-      }
+      if (!error) await refreshAllData();
     }
   };
 
-  // 🌟【同期関数：予約リスト保存用】
   const setBookingListWithSync = async (updateArg) => {
     const newList = typeof updateArg === 'function' ? updateArg(bookingList) : updateArg;
     setBookingList(newList);
@@ -168,12 +183,10 @@ function App() {
     await refreshAllData();
   };
 
-  // 🌟【核心：DB連動型自動キープ生成ロジック】
   const getSystemKeepDates = () => {
     const dates = [];
     const now = new Date();
     const todayStr = now.toLocaleDateString('sv-SE');
-
     dbFacilities.forEach(fac => {
       const rules = fac.regular_rules || [];
       for (let m = 0; m <= 12; m++) {
@@ -240,7 +253,6 @@ function App() {
     setUsers(prev => prev.filter(u => u.id !== id));
   };
 
-  // 🌟【消さない仕様】
   const completeFacilityBooking = async (facilityName) => {
     await refreshAllData();
   };
@@ -264,18 +276,13 @@ function App() {
     if (!error) await refreshAllData();
   };
 
-  // 🌟【予約確定反映ロジック：成功版を移植】
   const finalizeBooking = async () => {
     const myKeepDates = keepDates.filter(kd => kd.facility === user.name).map(kd => kd.date);
     const sortedKeepDates = [...myKeepDates].sort();
     if (sortedKeepDates.length === 0) return;
-    
     const activeMonth = sortedKeepDates[0].substring(0, 7);
     const datesToConfirm = myKeepDates.filter(d => d.startsWith(activeMonth));
-    
-    // getSystemKeepDatesの結果を一度変数に置いて確実な参照を確保
     const currentSystemKeeps = getSystemKeepDates();
-
     const newConfirmedEntries = datesToConfirm.map(date => {
       const sysKeep = currentSystemKeeps.find(sk => sk.date === date && sk.facility === user.name);
       return {
@@ -287,16 +294,15 @@ function App() {
         id: `${user.name}-${date}`.replace(/\//g, '-')
       };
     });
-
     const { error } = await supabase.from('bookings').upsert(newConfirmedEntries);
     if (!error) {
-      // クラウドのキープデータを消去
+      await supabase.from('members').update({ is_selected: false }).eq('facility', user.name);
       for (const d of datesToConfirm) {
         await supabase.from('keep_dates').delete().match({ facility: user.name, date: d });
       }
       setSelectedMembers([]); 
       setPage('thanks');
-      await refreshAllData(); // 🌟 ここでbookingsテーブルの内容を再取得して、カレンダー等を最新にする
+      await refreshAllData();
     } else {
       alert("予約の確定に失敗しました。");
     }
@@ -359,36 +365,17 @@ function App() {
               checkDateSelectable={checkDateSelectable}
               updateUserNotes={updateUserNotes} refreshAllData={refreshAllData}
             />
-) : (
+          ) : (
             <div className="mobile-view-container" style={{width:'100%'}}>
-              {/* --- 管理者用メインメニュー --- */}
               {currentPageName === 'admin-top' && <AdminMenu setPage={setPage} setActiveFacility={setActiveFacility} dbFacilities={dbFacilities} user={user} />}
-              
-              {/* 🌟 1. 現場タスク入力 */}
               {currentPageName === 'task' && <TaskMode bookingList={bookingList} historyList={historyList} setHistoryList={setHistoryListWithSync} setBookingList={setBookingListWithSync} setPage={setPage} users={users} activeFacility={activeFacility} setActiveFacility={setActiveFacility} menuPrices={menuPrices} colorList={colorList} updateUserNotes={updateUserNotes} />}
-              
-              {/* 🌟 2. 予約状況・一括キャンセル */}
               {currentPageName === 'admin-reserve' && <AdminScheduleManager keepDates={keepDates} setKeepDates={setManualKeepDatesWithSync} bookingList={bookingList} setBookingList={setBookingListWithSync} setPage={setPage} user={user} historyList={historyList} allUsers={users} refreshAllData={refreshAllData} />}
-              
-              {/* 🌟 3. スケジュール(NG)管理（真っ白対策済みの新コンポーネント） */}
               {currentPageName === 'admin-ng' && <ScheduleNG keepDates={keepDates} bookingList={bookingList} ngDates={ngDates} setNgDates={setNgDatesWithSync} historyList={historyList} setPage={setPage} checkDateSelectable={checkDateSelectable} />}
-              
-              {/* 🌟 4. 全施設名簿マスター(施設情報の編集) */}
               {currentPageName === 'admin-facility-list' && <AdminFacilityList setPage={setPage} refreshAllData={refreshAllData} />}
-              
-              {/* 🌟 5. みんなの情報(利用者名簿の管理) */}
               {currentPageName === 'master-user-list' && <AdminMasterUserList users={users} setUsers={setUsers} facilityMaster={dbFacilities} setPage={setPage} historyList={historyList} bookingList={bookingList} refreshAllData={refreshAllData} />}
-              
-              {/* 🌟 6. 過去の利用履歴 */}
               {currentPageName === 'admin-history' && <AdminHistory setPage={setPage} historyList={historyList} bookingList={bookingList} menuPrices={menuPrices} />}
-              
-              {/* 🌟 7. 請求書管理 */}
               {currentPageName === 'invoice' && <InvoiceManager setPage={setPage} historyList={historyList} />}
-              
-              {/* 🌟 8. 売上分析ボード */}
               {currentPageName === 'dashboard' && <AdminDashboard historyList={historyList} bookingList={bookingList} setPage={setPage} />}
-              
-              {/* 🌟 9. 完了確認画面・印刷用リストなど */}
               {currentPageName === 'task-confirm' && <TaskConfirmMode historyList={historyList} bookingList={bookingList} setPage={setPage} facilityName={activeFacility} user={user} completeFacilityBooking={completeFacilityBooking} />}
               {currentPageName === 'admin-print-today' && <AdminTodayList facilityName={activeFacility} bookingList={bookingList} users={users} setPage={setPage} />}
             </div>
@@ -402,24 +389,29 @@ function App() {
               bookingList={bookingList} historyList={historyList}
               allUsers={users} keepDates={keepDates} ngDates={ngDates}        
               refreshAllData={refreshAllData}
-              selectedMembers={selectedMembers} setSelectedMembers={setSelectedMembers} 
+              selectedMembers={selectedMembers} 
+              setSelectedMembers={setSelectedMembersWithSync} 
               scheduleTimes={scheduleTimes} setScheduleTimes={setScheduleTimes} 
               finalizeBooking={finalizeBooking} checkDateSelectable={checkDateSelectable}
+              handleLogout={handleLogout} 
             />
           ) : (
             <div className="mobile-view-container" style={{width:'100%'}}>
               {currentPageName === 'menu' && <Menu setPage={setPage} user={user} />}
               {currentPageName === 'list' && <ListPage users={users.filter(u => u.facility === user.name)} setUsers={async (updated) => { await supabase.from('members').upsert(updated); await refreshAllData(); }} deleteUserFromMaster={deleteUserFromMaster} setPage={setPage} facilityName={user.name} />}
               {currentPageName === 'keep-date' && <KeepDate keepDates={keepDates} setKeepDates={setManualKeepDatesWithSync} bookingList={bookingList} ngDates={ngDates} historyList={historyList} setPage={setPage} checkDateSelectable={checkDateSelectable} user={user} />}
-              {currentPageName === 'confirm' && <ConfirmBooking keepDates={keepDates.filter(kd => kd.facility === user.name).map(kd => kd.date)} users={users.filter(u => u.facility === user.name)} selectedMembers={selectedMembers} setSelectedMembers={setSelectedMembers} setPage={setPage} menuPrices={{ 'カット': 1600, 'カラー': 5600, 'パーマ': 4600 }} />}
-              {currentPageName === 'timeselect' && <TimeSelection keepDates={keepDates.filter(kd => kd.facility === user.name).map(kd => kd.date)} scheduleTimes={scheduleTimes} setScheduleTimes={setScheduleTimes} setPage={setPage} config={businessConfig} />}
-              {currentPageName === 'preview' && <FinalPreview keepDates={keepDates.filter(kd => kd.facility === user.name).map(kd => kd.date)} selectedMembers={selectedMembers} scheduleTimes={scheduleTimes} setPage={setPage} finalizeBooking={finalizeBooking} />}
+              {currentPageName === 'confirm' && <ConfirmBooking keepDates={keepDates.filter(kd => { const dateStr = typeof kd === 'string' ? kd : kd?.date; return (typeof kd === 'string' ? user?.name : kd?.facility) === user?.name; })} users={users.filter(u => u.facility === user.name)} selectedMembers={selectedMembers} setSelectedMembers={setSelectedMembersWithSync} setPage={setPage} menuPrices={menuPrices} historyList={historyList} user={user} />}
+              {currentPageName === 'timeselect' && <TimeSelection keepDates={keepDates.filter(kd => (typeof kd === 'string' ? user?.name : kd?.facility) === user?.name).map(kd => (typeof kd === 'string' ? kd : kd.date))} scheduleTimes={scheduleTimes} setScheduleTimes={setScheduleTimes} setPage={setPage} config={businessConfig} />}
+              {currentPageName === 'preview' && <FinalPreview keepDates={keepDates.filter(kd => (typeof kd === 'string' ? user?.name : kd?.facility) === user?.name).map(kd => (typeof kd === 'string' ? kd : kd.date))} selectedMembers={selectedMembers} scheduleTimes={scheduleTimes} setPage={setPage} finalizeBooking={finalizeBooking} />}
               {currentPageName === 'thanks' && <ThanksPage setPage={setPage} />}
               {currentPageName === 'schedule' && <ScheduleManager keepDates={keepDates} setKeepDates={setManualKeepDatesWithSync} bookingList={bookingList} setBookingList={setBookingListWithSync} setPage={setPage} user={user} historyList={historyList} users={users} />}
               {currentPageName === 'history' && <VisitHistory setPage={setPage} historyList={historyList} bookingList={bookingList} user={user} />}
               {currentPageName === 'info' && <FacilityInfo user={user} setPage={setPage} />}
               {currentPageName === 'print-list' && <PrintUserList users={users.filter(u => u.facility === user.name)} historyList={historyList} keepDates={keepDates} bookingList={bookingList} facilityName={user.name} setPage={setPage} pageParams={page} />}
               {currentPageName === 'facility-invoice' && <FacilityInvoice historyList={historyList} bookingList={bookingList} user={user} setPage={setPage} />}
+              
+              {/* 🌟 モバイル版 使い方ガイドを表示する条件分岐を追加 */}
+              {currentPageName === 'manual' && <Manual setPage={setPage} />}
             </div>
           )
         )}
