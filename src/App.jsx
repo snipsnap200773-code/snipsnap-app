@@ -48,6 +48,12 @@ function App() {
   const [dbFacilities, setDbFacilities] = useState([]);
   const [isPC, setIsPC] = useState(window.innerWidth > 1024);
 
+  // 🌟 追加：システム全体の設定を保持するState
+  const [systemSettings, setSystemSettings] = useState({
+    closed_days: [1], // デフォルト月曜
+    allow_same_day_booking: true
+  });
+
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
@@ -87,7 +93,6 @@ function App() {
   }, []);
 
   // 🌟【最強の同期版：データ再取得関数】
-  // ここに「is_selected」を反映した選択状態の同期ロジックを統合しました
   const refreshAllData = async () => {
     const [
       { data: mData },
@@ -95,19 +100,20 @@ function App() {
       { data: bData },
       { data: kData },
       { data: nData },
-      { data: fData }
+      { data: fData },
+      { data: sData } // 🌟 システム設定を取得
     ] = await Promise.all([
       supabase.from('members').select('*'),
       supabase.from('history').select('*'),
       supabase.from('bookings').select('*'),
       supabase.from('keep_dates').select('*'),
       supabase.from('ng_dates').select('*'),
-      supabase.from('facilities').select('*')
+      supabase.from('facilities').select('*'),
+      supabase.from('system_settings').select('*').eq('id', 'main_config').single()
     ]);
 
     if (mData) {
       setUsers(mData);
-      // 🌟【自動保存の肝】DB上で is_selected かつ 自分の施設のメンバーのみを同期
       if (user && user.role === 'facility') {
         const draftMembers = mData.filter(m => m.facility === user.name && m.is_selected === true);
         setSelectedMembers(draftMembers.map(m => ({ ...m, menus: m.menus || ['カット'] })));
@@ -118,6 +124,7 @@ function App() {
     if (kData) setManualKeepDates(kData);
     if (nData) setNgDates(nData.map(d => d.date));
     if (fData) setDbFacilities(fData);
+    if (sData) setSystemSettings(sData); // 🌟 システム設定を反映
 
     return true; 
   };
@@ -128,17 +135,10 @@ function App() {
     }
   }, [user]);
 
-  // 🌟【選択メンバーのDB同期関数】
-  // 施設がリストを選んだ瞬間、DBのis_selectedを書き換えるロジック
   const setSelectedMembersWithSync = async (updateArg) => {
-    // 現在の選択状態を取得
     const nextMembers = typeof updateArg === 'function' ? updateArg(selectedMembers) : updateArg;
-    
-    // 変更があったユーザーを特定し、DBのフラグを更新
     if (user && user.role === 'facility') {
       const facilityUsers = users.filter(u => u.facility === user.name);
-      
-      // 全員分のフラグを一旦整理（現在の選択リストに入っているかどうか）
       const updatePromises = facilityUsers.map(u => {
         const isNowSelected = nextMembers.some(m => m.id === u.id);
         if (u.is_selected !== isNowSelected) {
@@ -146,12 +146,10 @@ function App() {
         }
         return null;
       }).filter(p => p !== null);
-
       if (updatePromises.length > 0) {
         await Promise.all(updatePromises);
       }
     }
-    
     setSelectedMembers(nextMembers);
   };
 
@@ -205,7 +203,7 @@ function App() {
         const displayMonth = targetDateForMonth.getMonth() + 1; // 1〜12月
 
         rules.forEach(rule => {
-          // 🌟 追加：月の条件判定 (1: 奇数月, 2: 偶数月)
+          // 🌟 月の条件判定 (1: 奇数月, 2: 偶数月)
           if (rule.monthType === 1 && displayMonth % 2 === 0) return;
           if (rule.monthType === 2 && displayMonth % 2 !== 0) return;
 
@@ -232,6 +230,11 @@ function App() {
           }
           if (matchDate) {
             const dateStr = matchDate.toLocaleDateString('sv-SE');
+            const dayOfWeek = matchDate.getDay();
+
+            // 🌟 追加：システム定休日の曜日はキープ日を生成しない
+            if (systemSettings.closed_days.includes(dayOfWeek)) return;
+
             const isAlreadyConfirmed = bookingList.some(b => b.date === dateStr && b.facility === fac.name);
             if (dateStr >= todayStr && !isAlreadyConfirmed) {
               dates.push({ 
@@ -253,7 +256,7 @@ function App() {
     return [...manualKeepDates, ...systemKeep].filter((v, i, a) =>
       a.findIndex(t => t.date === v.date && t.facility === v.facility) === i
     );
-  }, [dbFacilities, manualKeepDates, bookingList]);
+  }, [dbFacilities, manualKeepDates, bookingList, systemSettings]); // 🌟 systemSettingsを依存に追加
 
   const menuPrices = {
     'カット': 1600, 'カラー（リタッチ）': 4600, 'カラー（全体）': 5600, 'パーマ': 4600,
@@ -262,7 +265,21 @@ function App() {
   };
 
   const businessConfig = { startHour: 9, endHour: 14, interval: 30 };
-  const checkDateSelectable = (dateStr) => true;
+
+  // 🌟【最重要：制限ロジック】全施設のカレンダー選択可否をここで一括制御
+  const checkDateSelectable = (dateStr) => {
+    const dateObj = new Date(dateStr);
+    const dayOfWeek = dateObj.getDay();
+    const todayStr = new Date().toLocaleDateString('sv-SE');
+
+    // 1. 定休日の曜日チェック
+    if (systemSettings.closed_days.includes(dayOfWeek)) return false;
+
+    // 2. 当日予約の受付チェック
+    if (!systemSettings.allow_same_day_booking && dateStr === todayStr) return false;
+
+    return true;
+  };
 
   const deleteUserFromMaster = async (id) => {
     await supabase.from('members').delete().eq('id', id);
@@ -312,10 +329,7 @@ function App() {
     });
     const { error } = await supabase.from('bookings').upsert(newConfirmedEntries);
     if (!error) {
-      // 🌟【予約確定時のクリーンアップ】
-      // 確定した施設の「is_selected」フラグをDB上で一斉解除
       await supabase.from('members').update({ is_selected: false }).eq('facility', user.name);
-      
       for (const d of datesToConfirm) {
         await supabase.from('keep_dates').delete().match({ facility: user.name, date: d });
       }
@@ -334,12 +348,7 @@ function App() {
     } else {
       const { data: facility, error } = await supabase.from('facilities').select('*').eq('id', id).eq('pw', pass).single();
       if (!error && facility) {
-        loggedInUser = { 
-          role: 'facility', 
-          name: facility.name, 
-          facilityId: facility.id, 
-          details: facility 
-        };
+        loggedInUser = { role: 'facility', name: facility.name, facilityId: facility.id, details: facility };
       }
     }
     if (loggedInUser) {
@@ -362,14 +371,7 @@ function App() {
 
   return (
     <div id="root" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', minHeight: '100vh', backgroundColor: '#f0f7f4' }}>
-      <div style={{ 
-        width: '100%', 
-        maxWidth: isPC ? 'none' : '1000px', 
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: isPC ? 'stretch' : 'center', 
-        position: 'relative' 
-      }}>
+      <div style={{ width: '100%', maxWidth: isPC ? 'none' : '1000px', display: 'flex', flexDirection: 'column', alignItems: isPC ? 'stretch' : 'center', position: 'relative' }}>
         {user.role === 'barber' && (
           isPC ? (
             <AdminMenu_PC 
@@ -412,7 +414,7 @@ function App() {
               setSelectedMembers={setSelectedMembersWithSync} 
               scheduleTimes={scheduleTimes} setScheduleTimes={setScheduleTimes} 
               finalizeBooking={finalizeBooking} checkDateSelectable={checkDateSelectable}
-              handleLogout={handleLogout} // 👈 この一行を最後に追加してください！
+              handleLogout={handleLogout} 
             />
           ) : (
             <div className="mobile-view-container" style={{width:'100%'}}>
@@ -428,8 +430,6 @@ function App() {
               {currentPageName === 'info' && <FacilityInfo user={user} setPage={setPage} />}
               {currentPageName === 'print-list' && <PrintUserList users={users.filter(u => u.facility === user.name)} historyList={historyList} keepDates={keepDates} bookingList={bookingList} facilityName={user.name} setPage={setPage} pageParams={page} />}
               {currentPageName === 'facility-invoice' && <FacilityInvoice historyList={historyList} bookingList={bookingList} user={user} setPage={setPage} />}
-              
-              {/* 🌟 モバイル版 使い方ガイドを表示する条件分岐を追加 */}
               {currentPageName === 'manual' && <Manual setPage={setPage} />}
             </div>
           )
