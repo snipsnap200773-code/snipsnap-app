@@ -11,6 +11,10 @@ const WEEKS = [
   { label: "第1週", value: 1 }, { label: "第2週", value: 2 }, { label: "第3週", value: 3 },
   { label: "第4週", value: 4 }, { label: "最終週", value: -1 }, { label: "最後から2番目", value: -2 }
 ];
+// 🌟 追加：月の条件
+const MONTH_TYPES = [
+  { label: "毎月", value: 0 }, { label: "奇数月", value: 1 }, { label: "偶数月", value: 2 }
+];
 
 export default function AdminFacilityList_PC({ dbFacilities = [], refreshAllData }) {
   const [loading, setLoading] = useState(false);
@@ -29,11 +33,13 @@ export default function AdminFacilityList_PC({ dbFacilities = [], refreshAllData
   
   const [selDay, setSelDay] = useState(1); 
   const [selWeek, setSelWeek] = useState(1); 
+  const [selMonthType, setSelMonthType] = useState(0); // 🌟 追加：月選択State
 
   const addRule = () => {
-    const exists = formData.regular_rules?.some(r => r.day === selDay && r.week === selWeek);
+    // 🌟 月タイプも含めて重複チェック
+    const exists = formData.regular_rules?.some(r => r.day === selDay && r.week === selWeek && r.monthType === selMonthType);
     if (exists) return;
-    const newRule = { day: selDay, week: selWeek, time: '09:00' };
+    const newRule = { day: selDay, week: selWeek, monthType: selMonthType, time: '09:00' };
     setFormData({ ...formData, regular_rules: [...(formData.regular_rules || []), newRule] });
   };
 
@@ -79,12 +85,14 @@ export default function AdminFacilityList_PC({ dbFacilities = [], refreshAllData
       tel: f.tel || '', 
       regular_rules: f.regular_rules || [] 
     });
+    setSelMonthType(0); // 編集開始時はリセット
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const resetForm = () => {
     setEditingId(null);
     setFormData({ id: '', name: '', pw: '', address: '', tel: '', email: '', regular_rules: [] });
+    setSelMonthType(0);
   };
 
   return (
@@ -108,7 +116,6 @@ export default function AdminFacilityList_PC({ dbFacilities = [], refreshAllData
               <input style={inputStyle} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required placeholder="施設名" />
               <input style={inputStyle} value={formData.pw} onChange={e => setFormData({...formData, pw: e.target.value})} required placeholder="パスワード" />
               
-              {/* 🌟 連絡先情報の入力欄を追加 */}
               <label style={{...labelStyle, marginTop: '10px'}}>連絡先・通知設定</label>
               <input style={inputStyle} type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="通知用メールアドレス" />
               <input style={inputStyle} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="住所" />
@@ -117,6 +124,18 @@ export default function AdminFacilityList_PC({ dbFacilities = [], refreshAllData
 
             <div style={keepConfigBox}>
               <div style={{fontWeight:'bold', fontSize:'13px', color:'#1e3a8a', marginBottom:'10px'}}>📅 定期キープの設定</div>
+              
+              {/* 🌟 追加：月の条件タイル */}
+              <div style={tinyLabel}>月の条件</div>
+              <div style={{...tileGrid, gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '10px'}}>
+                {MONTH_TYPES.map(m => (
+                  <button key={m.value} type="button" onClick={() => setSelMonthType(m.value)} 
+                    style={{...tileBtn, backgroundColor: selMonthType === m.value ? '#1e3a8a' : '#fff', color: selMonthType === m.value ? '#fff' : '#444'}}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
               <div style={twoColInner}>
                 <div style={innerCol}>
                   <div style={tinyLabel}>曜日</div>
@@ -145,7 +164,10 @@ export default function AdminFacilityList_PC({ dbFacilities = [], refreshAllData
               <div style={ruleListArea}>
                 {formData.regular_rules?.map((r, i) => (
                   <div key={i} style={ruleBadgeItem}>
-                    <span>{WEEKS.find(w=>w.value===r.week)?.label}{DAYS.find(d=>d.value===r.day)?.label}曜</span>
+                    <span>
+                      {r.monthType === 1 ? '奇数 ' : r.monthType === 2 ? '偶数 ' : ''}
+                      {WEEKS.find(w=>w.value===r.week)?.label}{DAYS.find(d=>d.value===r.day)?.label}曜
+                    </span>
                     <button type="button" onClick={() => removeRule(i)} style={ruleDelBtn}>✕</button>
                   </div>
                 ))}
@@ -179,7 +201,7 @@ export default function AdminFacilityList_PC({ dbFacilities = [], refreshAllData
                     <div style={{fontSize:'12px', color:'#64748b', marginTop:'4px'}}>📍 {f.address || '住所未登録'}</div>
                     <div style={{fontSize:'12px', color:'#64748b'}}>📞 {f.tel || '電話未登録'}</div>
                   </td>
-                  <td style={tdStyle}>
+                  <td style={tdTDStyle}>
                     <div style={idLabel}>ID: {f.id} / PW: {f.pw}</div>
                     <div style={{fontSize:'12px', color: f.email ? '#3b82f6' : '#94a3b8', marginTop:'4px'}}>
                       📧 {f.email || 'メール未登録'}
@@ -189,6 +211,7 @@ export default function AdminFacilityList_PC({ dbFacilities = [], refreshAllData
                     <div style={{display:'flex', flexWrap:'wrap', gap:'4px'}}>
                       {f.regular_rules?.map((r, i) => (
                         <span key={i} style={ruleBadgeSimple}>
+                          {r.monthType === 1 ? '奇数 ' : r.monthType === 2 ? '偶数 ' : ''}
                           {WEEKS.find(w => w.value === r.week)?.label}{DAYS.find(d=>d.value===r.day)?.label}
                         </span>
                       ))}
@@ -210,7 +233,7 @@ export default function AdminFacilityList_PC({ dbFacilities = [], refreshAllData
   );
 }
 
-// 🎨 スタイル設定
+// 🎨 スタイル設定 (変更なし)
 const containerStyle = { display: 'flex', flexDirection: 'column', height: '100%', gap: '20px' };
 const headerStyle = { backgroundColor: 'white', padding: '20px 30px', borderRadius: '15px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' };
 const contentWrapper = { display: 'flex', gap: '20px', flex: 1, minHeight: 0 };
@@ -236,6 +259,7 @@ const theadTrStyle = { backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e
 const thStyle = { padding: '15px 20px', fontSize: '13px', color: '#64748b' };
 const trStyle = { borderBottom: '1px solid #f1f5f9' };
 const tdStyle = { padding: '15px 20px', verticalAlign: 'middle' };
+const tdTDStyle = { padding: '15px 20px', verticalAlign: 'middle' }; //  typo修正用
 const ruleBadgeSimple = { backgroundColor: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', border: '1px solid #e2e8f0' };
 const idLabel = { fontSize: '12px', color: '#1e3a8a', fontWeight: 'bold' };
 const editBtn = { padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', cursor: 'pointer', backgroundColor: '#fff' };

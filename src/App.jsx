@@ -87,6 +87,7 @@ function App() {
   }, []);
 
   // 🌟【最強の同期版：データ再取得関数】
+  // ここに「is_selected」を反映した選択状態の同期ロジックを統合しました
   const refreshAllData = async () => {
     const [
       { data: mData },
@@ -106,6 +107,7 @@ function App() {
 
     if (mData) {
       setUsers(mData);
+      // 🌟【自動保存の肝】DB上で is_selected かつ 自分の施設のメンバーのみを同期
       if (user && user.role === 'facility') {
         const draftMembers = mData.filter(m => m.facility === user.name && m.is_selected === true);
         setSelectedMembers(draftMembers.map(m => ({ ...m, menus: m.menus || ['カット'] })));
@@ -127,11 +129,16 @@ function App() {
   }, [user]);
 
   // 🌟【選択メンバーのDB同期関数】
+  // 施設がリストを選んだ瞬間、DBのis_selectedを書き換えるロジック
   const setSelectedMembersWithSync = async (updateArg) => {
+    // 現在の選択状態を取得
     const nextMembers = typeof updateArg === 'function' ? updateArg(selectedMembers) : updateArg;
     
+    // 変更があったユーザーを特定し、DBのフラグを更新
     if (user && user.role === 'facility') {
       const facilityUsers = users.filter(u => u.facility === user.name);
+      
+      // 全員分のフラグを一旦整理（現在の選択リストに入っているかどうか）
       const updatePromises = facilityUsers.map(u => {
         const isNowSelected = nextMembers.some(m => m.id === u.id);
         if (u.is_selected !== isNowSelected) {
@@ -144,6 +151,7 @@ function App() {
         await Promise.all(updatePromises);
       }
     }
+    
     setSelectedMembers(nextMembers);
   };
 
@@ -191,14 +199,22 @@ function App() {
       const rules = fac.regular_rules || [];
       for (let m = 0; m <= 12; m++) {
         const year = now.getFullYear();
-        const month = now.getMonth() + m;
+        const monthIndex = now.getMonth() + m;
+        // 🌟 月条件の判定用
+        const targetDateForMonth = new Date(year, monthIndex, 1);
+        const displayMonth = targetDateForMonth.getMonth() + 1; // 1〜12月
+
         rules.forEach(rule => {
-          const lastDayOfMonth = new Date(year, month + 1, 0);
+          // 🌟 追加：月の条件判定 (1: 奇数月, 2: 偶数月)
+          if (rule.monthType === 1 && displayMonth % 2 === 0) return;
+          if (rule.monthType === 2 && displayMonth % 2 !== 0) return;
+
+          const lastDayOfMonth = new Date(year, monthIndex + 1, 0);
           let matchDate = null;
           if (rule.week > 0) {
             let count = 0;
             for (let i = 1; i <= lastDayOfMonth.getDate(); i++) {
-              const d = new Date(year, month, i);
+              const d = new Date(year, monthIndex, i);
               if (d.getDay() === rule.day) {
                 count++;
                 if (count === rule.week) { matchDate = d; break; }
@@ -207,7 +223,7 @@ function App() {
           } else {
             let count = 0;
             for (let i = lastDayOfMonth.getDate(); i >= 1; i--) {
-              const d = new Date(year, month, i);
+              const d = new Date(year, monthIndex, i);
               if (d.getDay() === rule.day) {
                 count--;
                 if (count === rule.week) { matchDate = d; break; }
@@ -296,7 +312,10 @@ function App() {
     });
     const { error } = await supabase.from('bookings').upsert(newConfirmedEntries);
     if (!error) {
+      // 🌟【予約確定時のクリーンアップ】
+      // 確定した施設の「is_selected」フラグをDB上で一斉解除
       await supabase.from('members').update({ is_selected: false }).eq('facility', user.name);
+      
       for (const d of datesToConfirm) {
         await supabase.from('keep_dates').delete().match({ facility: user.name, date: d });
       }
@@ -393,7 +412,7 @@ function App() {
               setSelectedMembers={setSelectedMembersWithSync} 
               scheduleTimes={scheduleTimes} setScheduleTimes={setScheduleTimes} 
               finalizeBooking={finalizeBooking} checkDateSelectable={checkDateSelectable}
-              handleLogout={handleLogout} 
+              handleLogout={handleLogout} // 👈 この一行を最後に追加してください！
             />
           ) : (
             <div className="mobile-view-container" style={{width:'100%'}}>
