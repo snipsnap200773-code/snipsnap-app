@@ -22,7 +22,9 @@ export default function TaskMode_PC({
   const doneListRef = useRef(null);
   const finishBtnRef = useRef(null);
   const [showConfirmPopup, setShowConfirmPopup] = useState(false);
-  const [saveMessage, setSaveMessage] = useState(""); // 🌟 保存メッセージ用の状態
+  const [saveMessage, setSaveMessage] = useState(""); 
+  // 🌟 追加：キャンセル確認用ポップアップの状態
+  const [showCancelConfirm, setShowCancelConfirm] = useState(null);
 
   // 日付形式の不一致を解消
   const formatDateForCompare = (dateStr) => {
@@ -88,12 +90,11 @@ export default function TaskMode_PC({
     else completeTask(m, hopeMenus.join('＆') || 'カット');
   };
 
-  // 🌟【価格判定ロジック】キーワード判定
   const completeTask = async (m, finalMenu, colorNum = "") => {
     const menuName = finalMenu + (colorNum ? ` ${colorNum}` : "");
     let price = 0;
     const basePrices = {
-      'カット': 1600, 'カラー': 5600, 'パーま': 4600,
+      'カット': 1600, 'カラー': 5600, 'パーマ': 4600,
       'カラー（リタッチ）': 4600, 'カラー（全体）': 5600
     };
     if (basePrices[finalMenu]) {
@@ -121,10 +122,11 @@ export default function TaskMode_PC({
     closeAllModals();
   };
 
-  const handleCancel = async (e, m) => {
-    e.stopPropagation();
+  // 実際のキャンセル実行
+  const executeCancelMember = async (m) => {
     const updatedMembers = allMembersInTask.map(member => member.name === m.name ? { ...member, status: 'cancel' } : member);
     await updateBookingInCloud(updatedMembers);
+    setShowCancelConfirm(null);
   };
 
   const handleRestore = async (m) => {
@@ -141,7 +143,7 @@ export default function TaskMode_PC({
     await supabase.from('bookings').upsert(updatedBooking);
   };
 
-  // 🌟【新設】保存して戻る処理
+  // 保存して戻る処理
   const handleFinalSave = async () => {
     try {
       setSaveMessage("クラウドに保存中...");
@@ -165,7 +167,6 @@ export default function TaskMode_PC({
 
   return (
     <div style={containerStyle}>
-      {/* ヘッダーパネル */}
       <div style={headerPanelStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -176,14 +177,12 @@ export default function TaskMode_PC({
           </div>
           <div style={{display:'flex', gap:'10px'}}>
              <button onClick={() => setShowAddMember(true)} style={addMemberBtn}>＋ 当日追加</button>
-             {/* 🌟 ボタン名を変更し、保存アクションを紐付け */}
              <button onClick={handleFinalSave} style={saveBtn}>今日はここまで</button>
           </div>
         </div>
       </div>
 
       <div style={mainLayout}>
-        {/* 左カラム：未完了 */}
         <section style={columnStyle}>
           <div style={columnHeader}>
             <h3>⏳ 施術待ち</h3>
@@ -202,13 +201,12 @@ export default function TaskMode_PC({
                     {m.menus?.map((menu, i) => <span key={i} style={hopeMenuBadgeStyle}>{menu}</span>)}
                   </div>
                 </div>
-                <button onClick={(e) => handleCancel(e, m)} style={inlineCancelBtn}>キャンセル</button>
+                <button onClick={(e) => {e.stopPropagation(); setShowCancelConfirm(m)}} style={inlineCancelBtn}>キャンセル</button>
               </div>
             ))}
           </div>
         </section>
 
-        {/* 右カラム：完了 */}
         <section style={{...columnStyle, backgroundColor: '#f8fafc', borderLeft: '2px solid #e2e8f0'}}>
           <div style={columnHeader}>
             <h3>✅ 完了・キャンセル</h3>
@@ -243,12 +241,28 @@ export default function TaskMode_PC({
         </section>
       </div>
 
-      {/* 🌟 通知用トースト(ポップアップ) */}
       {saveMessage && (
         <div style={toastStyle}>{saveMessage}</div>
       )}
 
-      {/* 🌟 ポップアップの中で「消さない仕様」のモバイル版画面を呼び出す */}
+      {/* キャンセル確認ポップアップ */}
+      {showCancelConfirm && (
+        <div style={overlayStyle} onClick={() => setShowCancelConfirm(null)}>
+          <div style={modalStyle} onClick={e => e.stopPropagation()}>
+            <h3 style={{color:'#1e3a8a'}}>{showCancelConfirm.name} 様</h3>
+            <div style={{fontSize: '16px', color: '#64748b', margin: '15px 0 25px'}}>
+              予約をキャンセル（欠席）扱いに<br/>しますか？
+            </div>
+            <div style={{display:'flex', flexDirection:'column', gap:'12px'}}>
+              <button onClick={() => executeCancelMember(showCancelConfirm)} 
+                style={confirmYesBtn}>はい、キャンセルします</button>
+              <button onClick={() => setShowCancelConfirm(null)} 
+                style={confirmNoBtn}>いいえ、戻ります</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showConfirmPopup && (
         <div style={fullOverlayStyle} onClick={() => setShowConfirmPopup(false)}>
           <div style={popupWrapperStyle} onClick={e => e.stopPropagation()}>
@@ -271,7 +285,6 @@ export default function TaskMode_PC({
         </div>
       )}
 
-      {/* --- モーダル・ピック類 --- */}
       {showAddMember && (
         <div style={overlayStyle} onClick={() => setShowAddMember(false)}>
           <div style={{...modalStyle, width:'500px', maxHeight:'80vh', display:'flex', flexDirection:'column'}} onClick={e => e.stopPropagation()}>
@@ -306,11 +319,37 @@ export default function TaskMode_PC({
         </div>
       )}
 
+      {/* 🌟 薬剤ブランドグループ表示版 */}
       {showColorNumberPicker && (
         <div style={overlayStyle} onClick={() => setShowColorNumberPicker(null)}>
-          <div style={{...modalStyle, width: '550px'}} onClick={e => e.stopPropagation()}>
-            <p style={{fontWeight:'bold'}}>{pendingMenuName}</p>
-            <div style={colorGrid}>{colorList.map(c => <button key={c} onClick={() => completeTask(showColorNumberPicker, pendingMenuName, c)} style={colorBtnStyle}>{c}</button>)}</div>
+          <div style={{...modalStyle, width: '600px'}} onClick={e => e.stopPropagation()}>
+            <h3 style={{color:'#1e3a8a', marginBottom:'20px'}}>{showColorNumberPicker.name} 様</h3>
+            <p style={{fontWeight:'bold', marginBottom:'20px', borderBottom:'1px solid #eee', paddingBottom:'10px'}}>
+              {pendingMenuName}
+            </p>
+            
+            <div style={{textAlign:'left', maxHeight:'50vh', overflowY:'auto', padding:'0 10px'}}>
+              {/* --- オリーブカーキー (OK) グループ --- */}
+              <div style={{marginBottom:'20px'}}>
+                <div style={{fontSize:'14px', fontWeight:'bold', color:'#2d6a4f', marginBottom:'8px'}}>【オリーブカーキー】</div>
+                <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:'10px'}}>
+                  {colorList.filter(c => c.includes('OK')).map(c => (
+                    <button key={c} onClick={() => completeTask(showColorNumberPicker, pendingMenuName, c)} style={colorBtnStyle}>{c}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* --- プルーンアッシュ (PA) グループ --- */}
+              <div style={{marginBottom:'20px'}}>
+                <div style={{fontSize:'14px', fontWeight:'bold', color:'#4b2c5e', marginBottom:'8px'}}>【プルーンアッシュ】</div>
+                <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:'10px'}}>
+                  {colorList.filter(c => c.includes('PA')).map(c => (
+                    <button key={c} onClick={() => completeTask(showColorNumberPicker, pendingMenuName, c)} style={colorBtnStyle}>{c}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <button onClick={() => { setShowColorNumberPicker(null); setShowColorTypePicker(showColorNumberPicker); }} style={modalCloseBtn}>戻る</button>
           </div>
         </div>
@@ -329,7 +368,9 @@ export default function TaskMode_PC({
   );
 }
 
-// 🎨 スタイル設定（通知用の toastStyle を追加、saveBtn を青色に変更）
+// デザイン設定
+const confirmYesBtn = { width: '100%', padding: '16px', borderRadius: '15px', border: 'none', backgroundColor: '#ef4444', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' };
+const confirmNoBtn = { width: '100%', padding: '16px', borderRadius: '15px', border: 'none', backgroundColor: '#64748b', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' };
 const toastStyle = { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', backgroundColor: 'rgba(30, 58, 138, 0.9)', color: 'white', padding: '16px 32px', borderRadius: '50px', zIndex: 20000, fontWeight: 'bold', fontSize: '18px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', pointerEvents: 'none' };
 const saveBtn = { padding: '8px 20px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' };
 const finishBtnStyle = { width: '100%', padding: '25px', backgroundColor: '#ff85d0', color: 'white', border: 'none', borderRadius: '20px', fontSize: '24px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 10px 20px rgba(255, 133, 208, 0.3)', transition: '0.3s' };

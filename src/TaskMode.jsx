@@ -31,6 +31,8 @@ export default function TaskMode({
   const [showAddList, setShowAddList] = useState(false); 
   const [addListSortKey, setAddListSortKey] = useState('room');
   const [saveMessage, setSaveMessage] = useState("");
+  // 🌟 追加：キャンセル確認用ポップアップの状態
+  const [showCancelConfirm, setShowCancelConfirm] = useState(null);
 
   // 今日のこの施設の予約データを特定
   const currentBooking = bookingList.find(b => 
@@ -88,13 +90,15 @@ export default function TaskMode({
     }
   };
 
-  const handleCancelMember = (memberName) => {
+  // 🌟 修正：実際のキャンセル実行ロジック
+  const executeCancelMember = (memberName) => {
     const updatedMembers = allMembersInTask.map(m => 
       m.name === memberName ? { ...m, status: 'cancel' } : m
     );
     setBookingList(prev => prev.map(b => 
       b.id === currentBooking.id ? { ...b, members: updatedMembers } : b
     ));
+    setShowCancelConfirm(null); // ポップアップを閉じる
   };
 
   const handleResetMember = async (targetMember) => {
@@ -109,7 +113,6 @@ export default function TaskMode({
     setShowReset(null);
   };
 
-  // 🌟【修正箇所】価格決定ロジックの強化（InvoiceManager_PCと同じ命令）
   const completeTask = (m, finalMenu, colorNum = "") => {
     let price = 0;
     const basePrices = {
@@ -228,7 +231,7 @@ export default function TaskMode({
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       {(!isDone && !isCancel) ? ( 
-                        <button onClick={(e) => {e.stopPropagation(); handleCancelMember(m.name)}} style={cancelBtnStyle}>キャンセル</button>
+                        <button onClick={(e) => {e.stopPropagation(); setShowCancelConfirm(m)}} style={cancelBtnStyle}>キャンセル</button>
                       ) : ( 
                         <span style={{fontSize:'12px', fontWeight:'bold', color: isCancel?'#ef4444':'#64748b'}}>{isCancel ? '取消済' : '完了済'}</span> 
                       )}
@@ -244,7 +247,7 @@ export default function TaskMode({
           <div style={{ marginTop: '20px', display:'flex', flexDirection:'column', gap:'10px' }}>
             {isFinishedAll && ( 
               <button ref={finishButtonRef} onClick={() => setPage('task-confirm')} style={finishBtnStyle}>
-                お仕事お疲れさまでした！ ♡
+                お仕事お疲れさました！ ♡
               </button> 
             )}
             <button onClick={handleFinalSave} style={pauseBtnStyle}>今日はここまで (保存して戻る)</button>
@@ -254,6 +257,24 @@ export default function TaskMode({
 
       <button className="floating-back-btn" onClick={handleFinalSave} style={{ zIndex: 10001, bottom: '20px', left: '20px' }}>←</button>
       {saveMessage && ( <div style={toastStyle}>{saveMessage}</div> )}
+
+      {/* 🌟 修正：SnipSnapデザインのキャンセル確認ポップアップ */}
+      {showCancelConfirm && (
+        <div style={overlayStyle} onClick={() => setShowCancelConfirm(null)}>
+          <div style={menuBoxStyle} onClick={e => e.stopPropagation()}>
+            <div style={modalNameStyle}>{showCancelConfirm.name} 様</div>
+            <div style={{fontSize: '15px', color: '#64748b', margin: '10px 0 20px'}}>
+              予約をキャンセル（欠席）扱いに<br/>しますか？
+            </div>
+            <div style={{display:'flex', flexDirection:'column', gap:'12px'}}>
+              <button onClick={() => executeCancelMember(showCancelConfirm.name)} 
+                style={{...bigBtnStyle, backgroundColor: '#ef4444'}}>はい、キャンセルします</button>
+              <button onClick={() => setShowCancelConfirm(null)} 
+                style={{...bigBtnStyle, backgroundColor: '#64748b'}}>いいえ、戻ります</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- モーダル類 --- */}
       {showReset && (
@@ -290,18 +311,38 @@ export default function TaskMode({
         </div>
       )}
 
+      {/* 🌟 薬剤ブランドグループ表示版 */}
       {showColorPicker && (
         <div style={overlayStyle} onClick={() => setShowColorPicker(null)}>
           <div style={menuBoxStyle} onClick={e => e.stopPropagation()}>
             <div style={modalNameStyle}>{showColorPicker.member.name} 様</div>
             <div style={{fontSize: '13px', color: '#64748b', marginBottom: '15px'}}>{showColorPicker.menu} の薬剤を選択</div>
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px'}}>
-              {colorList.map(color => (
-                <button key={color} onClick={() => completeTask(showColorPicker.member, showColorPicker.menu, color)}
-                  style={{...miniSortBtnStyle, padding: '15px', backgroundColor: '#3b82f6', color: 'white', border: 'none'}}>{color}</button>
-              ))}
+            
+            <div style={{textAlign:'left', maxHeight:'40vh', overflowY:'auto', padding:'5px'}}>
+              {/* オリーブカーキーグループ */}
+              <div style={{marginBottom:'15px'}}>
+                <div style={{fontSize:'12px', fontWeight:'bold', color:'#2d6a4f', marginBottom:'8px'}}>【オリーブカーキー】</div>
+                <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px'}}>
+                  {colorList.filter(c => c.includes('OK')).map(color => (
+                    <button key={color} onClick={() => completeTask(showColorPicker.member, showColorPicker.menu, color)}
+                      style={{...miniSortBtnStyle, padding: '15px', backgroundColor: '#3b82f6', color: 'white', border: 'none'}}>{color}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* プルーンアッシュグループ */}
+              <div style={{marginBottom:'15px'}}>
+                <div style={{fontSize:'12px', fontWeight:'bold', color:'#4b2c5e', marginBottom:'8px'}}>【プルーンアッシュ】</div>
+                <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px'}}>
+                  {colorList.filter(c => c.includes('PA')).map(color => (
+                    <button key={color} onClick={() => completeTask(showColorPicker.member, showColorPicker.menu, color)}
+                      style={{...miniSortBtnStyle, padding: '15px', backgroundColor: '#3b82f6', color: 'white', border: 'none'}}>{color}</button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <button onClick={() => setShowColorPicker(null)} style={{...bigBtnStyle, backgroundColor: '#64748b', marginTop: '15px'}}>戻る</button>
+
+            <button onClick={() => { setShowColorPicker(null); setShowMenu(showColorPicker.member); }} style={{...bigBtnStyle, backgroundColor: '#64748b', marginTop: '15px'}}>戻る</button>
           </div>
         </div>
       )}
@@ -337,7 +378,7 @@ export default function TaskMode({
   );
 }
 
-// 🎨 デザイン定数は変更なし
+// 🎨 デザイン定数（変更なし）
 const toastStyle = { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', backgroundColor: 'rgba(30, 58, 138, 0.9)', color: 'white', padding: '16px 32px', borderRadius: '50px', zIndex: 20000, fontWeight: 'bold', fontSize: '17px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', pointerEvents: 'none', animation: 'fadeInOut 1.2s ease-in-out' };
 const fixedHeaderWrapperStyle = { position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '1000px', backgroundColor: '#f0f7f4', zIndex: 1000, padding: '8px 15px', boxSizing: 'border-box', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' };
 const statusRowStyle = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', marginBottom: '8px', padding: '4px 0' };

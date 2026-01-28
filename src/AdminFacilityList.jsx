@@ -10,6 +10,10 @@ const WEEKS = [
   { label: "第1週", value: 1 }, { label: "第2週", value: 2 }, { label: "第3週", value: 3 },
   { label: "第4週", value: 4 }, { label: "最終週", value: -1 }, { label: "最後から2番目", value: -2 }
 ];
+// 🌟 追加：月の条件
+const MONTH_TYPES = [
+  { label: "毎月", value: 0 }, { label: "奇数月", value: 1 }, { label: "偶数月", value: 2 }
+];
 
 export default function AdminFacilityList({ setPage, refreshAllData }) {
   const [facilities, setFacilities] = useState([]);
@@ -23,6 +27,7 @@ export default function AdminFacilityList({ setPage, refreshAllData }) {
 
   const [selDay, setSelDay] = useState(1);
   const [selWeek, setSelWeek] = useState(1);
+  const [selMonthType, setSelMonthType] = useState(0); // 🌟 デフォルトは毎月
 
   const fetchFacilities = async () => {
     setLoading(true);
@@ -41,9 +46,10 @@ export default function AdminFacilityList({ setPage, refreshAllData }) {
   };
 
   const addRule = () => {
-    const exists = formData.regular_rules?.some(r => r.day === selDay && r.week === selWeek);
+    // 🌟 月タイプも含めて重複チェック
+    const exists = formData.regular_rules?.some(r => r.day === selDay && r.week === selWeek && r.monthType === selMonthType);
     if (exists) return;
-    const newRule = { day: selDay, week: selWeek, time: '09:00' };
+    const newRule = { day: selDay, week: selWeek, monthType: selMonthType, time: '09:00' };
     setFormData({ ...formData, regular_rules: [...(formData.regular_rules || []), newRule] });
   };
 
@@ -91,6 +97,7 @@ export default function AdminFacilityList({ setPage, refreshAllData }) {
   const resetForm = () => {
     setEditingId(null);
     setFormData({ id: '', name: '', pw: '', email: '', address: '', tel: '', regular_rules: [] });
+    setSelMonthType(0);
   };
 
   return (
@@ -126,6 +133,8 @@ export default function AdminFacilityList({ setPage, refreshAllData }) {
                     <div style={{display:'flex', flexWrap:'wrap', gap:'4px'}}>
                       {f.regular_rules?.map((r, i) => (
                         <span key={i} style={ruleBadgeSimple}>
+                          {/* 🌟 月条件の表示を追加 */}
+                          {r.monthType === 1 ? '奇数月 ' : r.monthType === 2 ? '偶数月 ' : ''}
                           {WEEKS.find(w => w.value === r.week)?.label}{DAYS.find(d=>d.value===r.day)?.label}曜
                         </span>
                       ))}
@@ -145,7 +154,6 @@ export default function AdminFacilityList({ setPage, refreshAllData }) {
         </div>
       </Layout>
 
-      {/* 🌟 登録・編集用モーダル */}
       {isModalOpen && (
         <div style={modalOverlayStyle} onClick={handleOverlayClick}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
@@ -158,7 +166,7 @@ export default function AdminFacilityList({ setPage, refreshAllData }) {
                     <input style={{...inputStyle, backgroundColor: editingId ? '#f1f5f9' : '#fff'}} value={formData.id} disabled={!!editingId} onChange={e => setFormData({...formData, id: e.target.value})} required placeholder="例: s1" />
                   </label>
                   <label style={labelStyle}>施設名
-                    <input style={inputStyle} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required placeholder="例: あおばの里" />
+                    <input style={inputStyle} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required placeholder="例: あおバの里" />
                   </label>
                   <label style={labelStyle}>パスワード
                     <input style={inputStyle} value={formData.pw} onChange={e => setFormData({...formData, pw: e.target.value})} required />
@@ -173,10 +181,22 @@ export default function AdminFacilityList({ setPage, refreshAllData }) {
                     <input style={inputStyle} value={formData.tel} onChange={e => setFormData({...formData, tel: e.target.value})} placeholder="03-1234-5678" />
                   </label>
 
-                  {/* 🌟 定期キープ設定エリア */}
+                  {/* 定期キープ設定エリア */}
                   <div style={keepConfigBox}>
                     <div style={{fontWeight:'bold', fontSize:'13px', color:'#1e3a8a', marginBottom:'8px'}}>📅 定期キープの設定</div>
-                    <div style={tinyLabel}>曜日を選択</div>
+                    
+                    {/* 🌟 追加：月条件のタイル選択 */}
+                    <div style={tinyLabel}>月の条件</div>
+                    <div style={tileGrid}>
+                      {MONTH_TYPES.map(m => (
+                        <button key={m.value} type="button" onClick={() => setSelMonthType(m.value)} 
+                          style={{...tileBtn, backgroundColor: selMonthType === m.value ? '#1e3a8a' : '#fff', color: selMonthType === m.value ? '#fff' : '#444'}}>
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div style={{...tinyLabel, marginTop:'10px'}}>曜日を選択</div>
                     <div style={tileGrid}>
                       {DAYS.map(d => (
                         <button key={d.value} type="button" onClick={() => setSelDay(d.value)} 
@@ -196,11 +216,13 @@ export default function AdminFacilityList({ setPage, refreshAllData }) {
                     </div>
                     <button type="button" onClick={addRule} style={addConfirmBtn}>この組み合わせを追加 ➔</button>
                     
-                    {/* 🌟 ルール一覧（ここがはみ出さないように最大高さを制限） */}
                     <div style={ruleListArea}>
                       {formData.regular_rules?.map((r, i) => (
                         <div key={i} style={ruleBadgeItem}>
-                          <span>{WEEKS.find(w=>w.value===r.week)?.label}{DAYS.find(d=>d.value===r.day)?.label}曜</span>
+                          <span>
+                            {r.monthType === 1 ? '奇数 ' : r.monthType === 2 ? '偶数 ' : ''}
+                            {WEEKS.find(w=>w.value===r.week)?.label}{DAYS.find(d=>d.value===r.day)?.label}曜
+                          </span>
                           <button type="button" onClick={() => removeRule(i)} style={ruleDelBtn}>✕</button>
                         </div>
                       ))}
@@ -210,7 +232,6 @@ export default function AdminFacilityList({ setPage, refreshAllData }) {
                 </div>
               </div>
 
-              {/* 🌟 ボタンエリアを最下部に固定 */}
               <div style={modalFooterStyle}>
                 <button type="button" onClick={() => {setIsModalOpen(false); resetForm();}} style={{...modalBtnStyle, backgroundColor:'#e2e8f0', color:'#475569'}}>キャンセル</button>
                 <button type="submit" style={{...modalBtnStyle, backgroundColor:'#1e3a8a', color:'white'}}>{loading ? '保存中...' : '保存する'}</button>
@@ -225,7 +246,7 @@ export default function AdminFacilityList({ setPage, refreshAllData }) {
   );
 }
 
-// デザインスタイル
+// デザインスタイル (既存のものを維持)
 const facilityCardStyle = { backgroundColor: 'white', borderRadius: '24px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderLeft: '10px solid #3b82f6' };
 const cardHeaderStyle = { borderBottom: '2px solid #f8fafc', paddingBottom: '12px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' };
 const idBadgeStyle = { backgroundColor: '#eff6ff', color: '#3b82f6', fontSize: '11px', padding: '4px 10px', borderRadius: '8px', fontWeight: 'bold' };
@@ -251,21 +272,7 @@ const tileGrid = { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 
 const tileBtn = { padding: '10px 2px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' };
 const addConfirmBtn = { width: '100%', padding: '12px', backgroundColor: '#2d6a4f', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', marginTop: '12px' };
 
-// 🌟 最大高さを制限し、スクロール可能に修正した部分
-const ruleListArea = { 
-  marginTop: '12px', 
-  display: 'flex', 
-  flexWrap: 'wrap', 
-  gap: '6px', 
-  padding: '10px', 
-  backgroundColor: '#fff', 
-  borderRadius: '10px', 
-  border: '1px solid #e2e8f0', 
-  minHeight: '40px', 
-  maxHeight: '100px', 
-  overflowY: 'auto' 
-};
-
+const ruleListArea = { marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '10px', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', minHeight: '40px', maxHeight: '100px', overflowY: 'auto' };
 const ruleBadgeItem = { display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#e0f2f1', color: '#00695c', padding: '4px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold' };
 const ruleDelBtn = { border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' };
 const emptyNote = { fontSize: '12px', color: '#94a3b8', width: '100%', textAlign: 'center' };

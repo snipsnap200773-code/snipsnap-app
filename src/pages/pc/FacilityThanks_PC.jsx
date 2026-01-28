@@ -4,18 +4,21 @@ export default function FacilityThanks_PC({ setPage, user }) {
   return (
     <div style={containerStyle}>
       <div style={cardStyle}>
-        {/* 🎉 祝・完了アイコン */}
+        {/* 🎉 祝・完了アイコン（アンティークな封筒をイメージ） */}
         <div style={iconCircleStyle}>
-          <span style={{ fontSize: '60px' }}>✉️</span>
+          <span style={{ fontSize: '80px' }}>✉️</span>
         </div>
 
         <h1 style={titleStyle}>予約の送信が完了しました！</h1>
         
         <div style={messageBoxStyle}>
-          <p style={textStyle}>
-            {user?.name} 様、ご入力ありがとうございました。
+          <p style={userNameTextStyle}>
+            {user?.name} 様
           </p>
-          <p style={textStyle}>
+          <p style={mainTextStyle}>
+            ご入力ありがとうございました。
+          </p>
+          <p style={subTextStyle}>
             予約内容が美容師へ送信されました。<br />
             スケジュールが確定するまで、しばらくお待ちください。
           </p>
@@ -24,7 +27,7 @@ export default function FacilityThanks_PC({ setPage, user }) {
         <div style={dividerStyle}></div>
 
         <div style={nextActionStyle}>
-          <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px' }}>
+          <p style={guideTextStyle}>
             現在の予約状況や進捗はこちらからご確認いただけます
           </p>
           <div style={btnGroupStyle}>
@@ -41,60 +44,78 @@ export default function FacilityThanks_PC({ setPage, user }) {
   );
 }
 
-// 🎨 スタイル設定
+// 🎨 デザインスタイル（文字特大・アンティーク調）
 const containerStyle = { 
   display: 'flex', 
   justifyContent: 'center', 
   alignItems: 'center', 
   height: '100%', 
-  backgroundColor: '#f0f7f4' 
+  backgroundColor: '#f9f7f5' // 落ち着いたベージュ背景
 };
 
 const cardStyle = { 
   backgroundColor: 'white', 
-  padding: '60px 80px', 
-  borderRadius: '40px', 
+  padding: '80px 100px', 
+  borderRadius: '50px', 
   textAlign: 'center', 
-  boxShadow: '0 20px 40px rgba(0,0,0,0.05)',
-  maxWidth: '700px',
-  width: '90%'
+  boxShadow: '0 30px 60px rgba(74, 55, 40, 0.12)',
+  maxWidth: '850px',
+  width: '90%',
+  border: '1px solid #e2d6cc'
 };
 
 const iconCircleStyle = {
-  width: '120px',
-  height: '120px',
-  backgroundColor: '#eefcf4',
+  width: '160px',
+  height: '160px',
+  backgroundColor: '#fdfcfb',
   borderRadius: '50%',
   display: 'flex',
   justifyContent: 'center',
   alignItems: 'center',
-  margin: '0 auto 30px',
-  border: '2px solid #2d6a4f'
+  margin: '0 auto 40px',
+  border: '3px solid #e0d6cc',
+  boxShadow: 'inset 0 0 20px rgba(0,0,0,0.02)'
 };
 
 const titleStyle = { 
-  fontSize: '28px', 
-  fontWeight: 'bold', 
-  color: '#2d6a4f',
-  marginBottom: '20px'
+  fontSize: '36px', 
+  fontWeight: '900', 
+  color: '#4a3728', // 落ち着いたこげ茶
+  marginBottom: '30px',
+  letterSpacing: '0.05em'
 };
 
 const messageBoxStyle = {
-  marginBottom: '40px'
+  marginBottom: '50px'
 };
 
-const textStyle = { 
-  fontSize: '16px', 
-  color: '#475569', 
+const userNameTextStyle = {
+  fontSize: '24px',
+  fontWeight: '800',
+  color: '#5d4037',
+  marginBottom: '10px'
+};
+
+const mainTextStyle = {
+  fontSize: '22px',
+  fontWeight: '700',
+  color: '#2d6a4f', // 完了をイメージする深緑
+  marginBottom: '20px'
+};
+
+const subTextStyle = { 
+  fontSize: '20px', 
+  color: '#7a6b5d', 
   lineHeight: '1.8',
-  margin: '10px 0'
+  margin: '10px 0',
+  fontWeight: '500'
 };
 
 const dividerStyle = {
-  height: '1px',
-  backgroundColor: '#e2e8f0',
-  width: '100%',
-  margin: '40px 0'
+  height: '2px',
+  backgroundColor: '#f2ede9',
+  width: '80%',
+  margin: '40px auto'
 };
 
 const nextActionStyle = {
@@ -103,20 +124,27 @@ const nextActionStyle = {
   alignItems: 'center'
 };
 
+const guideTextStyle = {
+  fontSize: '18px',
+  color: '#94a3b8',
+  marginBottom: '25px',
+  fontWeight: 'bold'
+};
+
 const btnGroupStyle = {
   display: 'flex',
   gap: '20px'
 };
 
 const primaryBtnStyle = {
-  padding: '18px 45px', // ボタンを少し大きくして目立たせました
-  backgroundColor: '#2d6a4f',
+  padding: '25px 60px',
+  backgroundColor: '#4a3728', // メインカラーのこげ茶
   color: 'white',
   border: 'none',
-  borderRadius: '20px',
-  fontWeight: 'bold',
-  fontSize: '16px',
+  borderRadius: '25px',
+  fontWeight: '900',
+  fontSize: '22px', // ボタン文字も特大
   cursor: 'pointer',
-  boxShadow: '0 8px 15px rgba(45, 106, 79, 0.2)',
+  boxShadow: '0 10px 25px rgba(74, 55, 40, 0.3)',
   transition: '0.3s'
 };

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layout } from './Layout';
+import { supabase } from './supabase'; // 🌟 保存のために追加
 
 export default function ConfirmBooking({ 
   keepDates = [], 
@@ -8,33 +9,29 @@ export default function ConfirmBooking({
   setSelectedMembers, 
   setPage,
   menuPrices = {},
-  historyList = [], // 🌟 判定のために追加
-  user // 🌟 施設ユーザー情報
+  historyList = [],
+  user
 }) {
-  // 🌟 表示する基準月を管理（自動判定ロジック付き）
+  // 🌟 表示する基準月を管理（自動判定ロジック）
   const [currentViewDate, setCurrentViewDate] = useState(() => {
     const now = new Date();
     const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const currentMonthSlash = currentMonthKey.replace(/-/g, '/');
 
-    // 1. 今月の全履歴を取得（完了分）
     const thisMonthHistory = historyList.filter(h => 
       h.facility === user?.name && h.date.startsWith(currentMonthSlash)
     );
 
-    // 2. 今月の予定総数を計算（キープされている人数など、usersの総数でも可）
-    // ここではシンプルに「利用者の数」を分母として判定
     const isAllDone = thisMonthHistory.length >= users.length && users.length > 0;
 
-    // 🌟 全員終わっていたら「来月」、まだなら「今月」を初期表示にする
     if (isAllDone) {
       const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
       return nextMonth;
     }
 
     if (keepDates.length > 0) {
-      const sorted = [...keepDates].sort();
-      return new Date(sorted[0]);
+      const firstDate = typeof keepDates[0] === 'string' ? keepDates[0] : keepDates[0].date;
+      return new Date(firstDate);
     }
     return now;
   });
@@ -42,7 +39,8 @@ export default function ConfirmBooking({
   const [sortKey, setSortKey] = useState('room'); 
   const [sortOrder, setSortOrder] = useState('asc'); 
 
-  const availableMenus = Object.keys(menuPrices);
+  // 🌟 メニューをPC版と同じ3つに固定
+  const availableMenus = ['カット', 'カラー', 'パーマ'];
 
   const changeViewMonth = (offset) => {
     setCurrentViewDate(new Date(currentViewDate.getFullYear(), currentViewDate.getMonth() + offset, 1));
@@ -55,7 +53,13 @@ export default function ConfirmBooking({
   };
 
   const currentMonthKey = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth() + 1).padStart(2, '0')}`;
-  const visibleDates = keepDates.filter(d => d.startsWith(currentMonthKey)).sort();
+  
+  // 🌟【施設フィルター】
+  const visibleDates = keepDates.filter(d => {
+    const dateStr = typeof d === 'string' ? d : d?.date;
+    const facilityName = typeof d === 'string' ? user?.name : d?.facility;
+    return dateStr && dateStr.startsWith(currentMonthKey) && facilityName === user?.name;
+  }).map(d => (typeof d === 'string' ? d : d.date)).sort();
 
   const sortedUsers = [...users].sort((a, b) => {
     let valA, valB;
@@ -79,22 +83,64 @@ export default function ConfirmBooking({
     }
   };
 
-  const toggleUserSelection = (user) => {
-    const isAdded = selectedMembers.find(u => u.id === user.id);
+  // 🌟【自動保存ロジック：メニュー初期値カット版】
+  const toggleUserSelection = async (targetUser) => {
+    const isAdded = selectedMembers.find(u => u.id === targetUser.id);
+    const newSelectedStatus = !isAdded;
+
+    // 1. Supabaseのフラグと初期メニュー(カット)を更新
+    const { error } = await supabase
+      .from('members')
+      .update({ 
+        is_selected: newSelectedStatus,
+        menus: newSelectedStatus ? ['カット'] : [] 
+      })
+      .eq('id', targetUser.id);
+
+    if (error) {
+      console.error("保存失敗:", error);
+      alert("選択を保存できませんでした。");
+      return;
+    }
+
+    // 2. 画面上のStateを更新
     if (isAdded) {
-      setSelectedMembers(selectedMembers.filter(u => u.id !== user.id));
+      setSelectedMembers(selectedMembers.filter(u => u.id !== targetUser.id));
     } else {
-      setSelectedMembers([...selectedMembers, { ...user, menus: [availableMenus[0] || 'カット'] }]);
+      if (targetUser.facility === user?.name) {
+        setSelectedMembers([...selectedMembers, { ...targetUser, menus: ['カット'] }]);
+      }
     }
   };
 
-  const toggleMenu = (userId, menuName) => {
+  // 🌟【メニュー変更の保存】
+  const toggleMenu = async (userId, menuName) => {
+    const target = selectedMembers.find(m => m.id === userId);
+    if (!target) return;
+
+    const currentMenus = target.menus || [];
+    const newMenus = currentMenus.includes(menuName)
+      ? currentMenus.filter(m => m !== menuName)
+      : [...currentMenus, menuName];
+    
+    // 全て外した場合は空配列を許容（カットを外してカラーだけにする等）
+    const finalMenus = newMenus;
+
+    // 1. DBに選んだメニュー配列を即時保存
+    const { error } = await supabase
+      .from('members')
+      .update({ menus: finalMenus })
+      .eq('id', userId);
+
+    if (error) {
+      console.error("メニュー保存失敗:", error);
+      return;
+    }
+
+    // 2. 画面上のStateを更新
     setSelectedMembers(selectedMembers.map(u => {
       if (u.id === userId) {
-        const newMenus = u.menus.includes(menuName)
-          ? u.menus.filter(m => m !== menuName)
-          : [...u.menus, menuName];
-        return { ...u, menus: newMenus.length === 0 ? [availableMenus[0] || 'カット'] : newMenus };
+        return { ...u, menus: finalMenus };
       }
       return u;
     }));
@@ -142,12 +188,12 @@ export default function ConfirmBooking({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {sortedUsers.map(user => {
-              const bookingInfo = selectedMembers.find(u => u.id === user.id);
+            {sortedUsers.map(u => {
+              const bookingInfo = selectedMembers.find(m => m.id === u.id);
               const isSelected = !!bookingInfo;
 
               return (
-                <div key={user.id} style={{
+                <div key={u.id} style={{
                   position: 'relative',
                   backgroundColor: isSelected ? '#fff9e6' : 'white', 
                   border: `2px solid ${isSelected ? '#f5a623' : '#eee'}`,
@@ -157,15 +203,15 @@ export default function ConfirmBooking({
                   boxShadow: isSelected ? '0 4px 15px rgba(245,166,35,0.1)' : 'none'
                 }}>
                   {isSelected && (
-                    <button onClick={() => toggleUserSelection(user)} style={removeIconStyle}>✕</button>
+                    <button onClick={() => toggleUserSelection(u)} style={removeIconStyle}>✕</button>
                   )}
-                  <div onClick={() => toggleUserSelection(user)} style={{ cursor: 'pointer', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <div onClick={() => toggleUserSelection(u)} style={{ cursor: 'pointer', display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '11px', color: '#94b0a7', fontWeight: 'bold' }}>
-                        {user.floor} {user.room}号室
+                        {u.floor} {u.room}号室
                       </div>
                       <div style={{ fontSize: '18px', fontWeight: 'bold', color: isSelected ? '#333' : '#2d6a4f' }}>
-                        {user.name} 様
+                        {u.name} 様
                       </div>
                     </div>
                   </div>
@@ -174,14 +220,14 @@ export default function ConfirmBooking({
                       {availableMenus.map(menu => (
                         <button
                           key={menu}
-                          onClick={() => toggleMenu(user.id, menu)}
+                          onClick={() => toggleMenu(u.id, menu)}
                           style={{
                             flex: '1 1 calc(33% - 6px)',
                             padding: '8px 4px', 
                             borderRadius: '10px', 
                             border: 'none',
-                            backgroundColor: bookingInfo.menus.includes(menu) ? '#f5a623' : '#f0f0f0',
-                            color: bookingInfo.menus.includes(menu) ? 'white' : '#666',
+                            backgroundColor: bookingInfo.menus && bookingInfo.menus.includes(menu) ? '#f5a623' : '#f0f0f0',
+                            color: bookingInfo.menus && bookingInfo.menus.includes(menu) ? 'white' : '#666',
                             fontSize: '11px', 
                             fontWeight: 'bold'
                           }}
@@ -222,7 +268,7 @@ export default function ConfirmBooking({
   );
 }
 
-// 🎨 デザインスタイル
+// 🎨 スタイル設定
 const monthNavContainerStyle = { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', marginBottom: '20px', backgroundColor: 'white', padding: '12px', borderRadius: '16px', boxShadow: '0 4px 10px rgba(0,0,0,0.03)' };
 const monthNavBtnStyle = { border: 'none', backgroundColor: '#f1f5f9', color: '#2d6a4f', padding: '8px 15px', borderRadius: '10px', fontSize: '14px', cursor: 'pointer', fontWeight: 'bold' };
 const monthTitleStyle = { fontSize: '18px', fontWeight: 'bold', color: '#2d6a4f' };
