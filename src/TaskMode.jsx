@@ -15,12 +15,17 @@ export default function TaskMode({
   colorList = [],
   updateUserNotes 
 }) {
+  // 🌟 日付判定を強化：ハイフンとスラッシュの両方に対応
   const finishButtonRef = useRef(null);
 
   const getTodayStr = () => {
     const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   };
+
   const todayStr = getTodayStr();
   const todaySlash = todayStr.replace(/-/g, '/');
   
@@ -30,9 +35,35 @@ export default function TaskMode({
   const [showReset, setShowReset] = useState(null); 
   const [showAddList, setShowAddList] = useState(false); 
   const [addListSortKey, setAddListSortKey] = useState('room');
+  const [taskStatus, setTaskStatus] = useState({});
   const [saveMessage, setSaveMessage] = useState("");
-  // 🌟 追加：キャンセル確認用ポップアップの状態
   const [showCancelConfirm, setShowCancelConfirm] = useState(null);
+
+  // 🌟【最重要修正：セッション期間の特定】
+  // 今日の日付が含まれている「セット予約」全体を見つける
+  const currentBookingSet = bookingList.find(b => 
+    b.facility === activeFacility && 
+    Array.isArray(b.dates) && 
+    b.dates.some(d => d.replace(/\//g, '-') === todayStr)
+  );
+
+  // 今回の訪問期間（スラッシュ形式の日列：['2025/12/12', '2025/12/13'...]）
+  const sessionDates = currentBookingSet 
+    ? currentBookingSet.dates.map(d => d.replace(/-/g, '/')) 
+    : [todaySlash];
+
+  // 🌟 今日の予約がある施設をすべて見つける
+  const todaysBookings = bookingList.filter(b => {
+    const bDate = (b.date || "").replace(/\//g, '-');
+    return bDate === todayStr && b.status === 'confirmed';
+  });
+  
+  // 今日の施設リスト（タブ用）
+  const facilities = Array.from(new Set(
+    bookingList
+      .filter(b => (b.date || "").replace(/\//g, '-') === todayStr)
+      .map(b => b.facility)
+  ));
 
   // 今日のこの施設の予約データを特定
   const currentBooking = bookingList.find(b => 
@@ -41,30 +72,41 @@ export default function TaskMode({
   
   const allMembersInTask = currentBooking?.members || [];
 
-  // 今日の施設リスト（タブ用）
-  const facilities = Array.from(new Set(
-    bookingList
-      .filter(b => (b.date || "").replace(/\//g, '-') === todayStr)
-      .map(b => b.facility)
-  ));
-  
+  // 🌟 施設が切り替わった時の初期化処理
   useEffect(() => {
     if (!activeFacility && facilities.length > 0) {
       setActiveFacility(facilities[0]);
     }
   }, [facilities, activeFacility, setActiveFacility]);
 
-  // 進捗計算ロジック
+  // 🌟 修正：初期ステータスの復元（セッション期間中を対象にする）
+  useEffect(() => {
+    if (activeFacility) {
+      const initialStatus = {};
+      // 履歴から今回のセット期間中の完了分を復元
+      historyList.forEach(h => {
+        if (sessionDates.includes(h.date.replace(/-/g, '/')) && h.facility === activeFacility) {
+          initialStatus[h.name] = { status: 'done' };
+        }
+      });
+      // 予約データから今日のキャンセル（欠席）分を復元
+      if (currentBooking?.members) {
+        currentBooking.members.forEach(m => {
+          if (m.status === 'cancel') initialStatus[m.name] = { status: 'cancel' };
+        });
+      }
+      setTaskStatus(initialStatus);
+    }
+  }, [activeFacility, bookingList, historyList, todaySlash, todayStr, sessionDates]);
+
+  // 🌟 修正：進捗計算ロジック（セッション期間中を対象にする）
   const doneCount = allMembersInTask.filter(m => 
-    historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility)
+    historyList.some(h => h.name === m.name && sessionDates.includes(h.date) && h.facility === activeFacility)
   ).length;
   const cancelCount = allMembersInTask.filter(m => m.status === 'cancel').length;
   const totalRaw = allMembersInTask.length;
-  // 残り人数 = 全体 - 完了 - キャンセル
   const remainingCount = totalRaw - doneCount - cancelCount;
-  // バーの進捗率 = (完了 + キャンセル) / 全体
   const progressPercent = totalRaw > 0 ? ((doneCount + cancelCount) / totalRaw) * 100 : 0;
-  // 全員終わったか判定
   const isFinishedAll = totalRaw > 0 && remainingCount === 0;
 
   useEffect(() => {
@@ -75,13 +117,30 @@ export default function TaskMode({
     }
   }, [isFinishedAll]);
 
+  // 保存処理
   const handleFinalSave = async () => {
     try {
       setSaveMessage("クラウドに保存中...");
+      await setHistoryList(historyList); 
+      
+      const updatedBookingListWithStatus = bookingList.map(b => {
+        const isTarget = b.facility === activeFacility && b.date.replace(/\//g, '-') === todayStr;
+        if (isTarget) {
+          const updatedMembers = b.members.map(m => ({
+            ...m,
+            status: taskStatus[m.name]?.status || 'yet'
+          }));
+          return { ...b, members: updatedMembers };
+        }
+        return b;
+      });
+      await setBookingList(updatedBookingListWithStatus);
+
       if (currentBooking) {
         const { error } = await supabase.from('bookings').upsert(currentBooking, { onConflict: 'id' });
         if (error) throw error;
       }
+      
       setSaveMessage("クラウドに保存しました！");
       setTimeout(() => { setPage('admin-top'); }, 1200);
     } catch (error) {
@@ -98,18 +157,22 @@ export default function TaskMode({
     setBookingList(prev => prev.map(b => 
       b.id === currentBooking.id ? { ...b, members: updatedMembers } : b
     ));
-    setShowCancelConfirm(null); // ポップアップを閉じる
+    setShowCancelConfirm(null); 
   };
 
   const handleResetMember = async (targetMember) => {
-    setHistoryList(prev => prev.filter(h => !(h.name === targetMember.name && h.date === todaySlash && h.facility === activeFacility)));
+    // セッション期間中の履歴を削除対象にする
+    setHistoryList(prev => prev.filter(h => !(h.name === targetMember.name && sessionDates.includes(h.date) && h.facility === activeFacility)));
     const updatedMembers = allMembersInTask.map(m => 
       m.name === targetMember.name ? { ...m, status: 'yet' } : m
     );
     setBookingList(prev => prev.map(b => 
       b.id === currentBooking.id ? { ...b, members: updatedMembers } : b
     ));
-    await supabase.from('history').delete().match({ name: targetMember.name, date: todaySlash, facility: activeFacility });
+    // DBからも今回の期間の履歴を消す
+    await supabase.from('history').delete()
+      .match({ name: targetMember.name, facility: activeFacility })
+      .in('date', sessionDates);
     setShowReset(null);
   };
 
@@ -153,9 +216,14 @@ export default function TaskMode({
     setShowMenu(null); setShowColorPicker(null);
   };
 
+  // 🌟 修正：並び替えロジック（セッション期間全体で判定）
   const sortedDisplayMembers = [...allMembersInTask].sort((a, b) => {
-    const statusA = historyList.some(h => h.name === a.name && h.date === todaySlash) ? 'done' : (a.status || 'yet');
-    const statusB = historyList.some(h => h.name === b.name && h.date === todaySlash) ? 'done' : (b.status || 'yet');
+    const isDoneA = historyList.some(h => h.name === a.name && sessionDates.includes(h.date) && h.facility === activeFacility);
+    const isDoneB = historyList.some(h => h.name === b.name && sessionDates.includes(h.date) && h.facility === activeFacility);
+    
+    const statusA = isDoneA ? 'done' : (a.status || 'yet');
+    const statusB = isDoneB ? 'done' : (b.status || 'yet');
+    
     const weight = { 'yet': 0, 'done': 1, 'cancel': 1 };
     if (weight[statusA] !== weight[statusB]) return weight[statusA] - weight[statusB];
     if (sortBy === "room") return String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
@@ -180,10 +248,14 @@ export default function TaskMode({
     return [originalMenu.replace("カラー", "カラー（リタッチ）"), originalMenu.replace("カラー", "カラー（全体）")];
   };
 
+  // 表示用変数の再定義
+  const plannedMembersForToday = allMembersInTask;
+
   return (
     <div style={{ width: '100%', minHeight: '100vh', backgroundColor: '#f0f7f4' }}>
       <div style={fixedHeaderWrapperStyle}>
         <div style={{ maxWidth: '600px', margin: '0 auto', width: '100%' }}>
+          {/* 今日の訪問先が複数ある場合のタブ切り替え */}
           {facilities.length > 1 && (
             <div style={tabContainerStyle}>
               {facilities.map(f => (
@@ -217,8 +289,11 @@ export default function TaskMode({
           {allMembersInTask.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {sortedDisplayMembers.map((m, idx) => {
-                const isDone = historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility);
+                // 🌟 今回のセット期間中に履歴があるか探す
+                const pastHistory = historyList.find(h => h.name === m.name && sessionDates.includes(h.date) && h.facility === activeFacility);
+                const isDone = !!pastHistory;
                 const isCancel = m.status === 'cancel';
+                
                 return (
                   <div key={idx} onClick={() => (isDone || isCancel) ? setShowReset(m) : setShowMenu(m)}
                     style={{ ...memberRowStyle, backgroundColor: isCancel ? '#fee2e2' : (isDone ? '#f1f5f9' : 'white'), borderColor: isCancel ? '#ef4444' : (isDone ? '#cbd5e1' : (m.isExtra ? '#3b82f6' : '#e2e8f0')), opacity: (isDone || isCancel) ? 0.8 : 1 }}>
@@ -227,6 +302,12 @@ export default function TaskMode({
                       <div style={{ marginLeft: '12px' }}>
                         <div style={{ fontWeight: 'bold', fontSize: '18px', color: (isDone||isCancel)?'#94a3b8':'#1e293b' }}>{m.name} 様 {isCancel && "(キャンセル)"}</div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>{(m.menus || ["カット"]).join(' / ')} {m.isExtra && "★当日"}</div>
+                        {/* 🌟 過去日の施術済ラベルを表示 */}
+                        {isDone && (
+                          <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 'bold', marginTop: '2px' }}>
+                            ✨ {pastHistory.date === todaySlash ? '今日' : pastHistory.date.split('/')[2] + '日'} に施術済み
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -255,10 +336,11 @@ export default function TaskMode({
         </div>
       </Layout>
 
-      <button className="floating-back-btn" onClick={handleFinalSave} style={{ zIndex: 10001, bottom: '20px', left: '20px' }}>←</button>
+      {/* --- フローティング戻るボタン --- */}
+      <button className="floating-back-btn" onClick={handleFinalSave} style={{ position:'fixed', zIndex: 10001, bottom: '20px', left: '20px', width:'50px', height:'50px', borderRadius:'25px', backgroundColor:'#1e3a8a', color:'white', border:'none', fontSize:'24px', cursor:'pointer' }}>←</button>
       {saveMessage && ( <div style={toastStyle}>{saveMessage}</div> )}
 
-      {/* 🌟 修正：SnipSnapデザインのキャンセル確認ポップアップ */}
+      {/* --- キャンセル確認ポップアップ --- */}
       {showCancelConfirm && (
         <div style={overlayStyle} onClick={() => setShowCancelConfirm(null)}>
           <div style={menuBoxStyle} onClick={e => e.stopPropagation()}>
@@ -276,7 +358,7 @@ export default function TaskMode({
         </div>
       )}
 
-      {/* --- モーダル類 --- */}
+      {/* --- リセット確認ポップアップ --- */}
       {showReset && (
         <div style={overlayStyle} onClick={() => setShowReset(null)}>
           <div style={menuBoxStyle} onClick={e => e.stopPropagation()}>
@@ -289,6 +371,7 @@ export default function TaskMode({
         </div>
       )}
 
+      {/* --- メニュー選択ポップアップ --- */}
       {showMenu && (
         <div style={overlayStyle} onClick={() => setShowMenu(null)}>
           <div style={menuBoxStyle} onClick={e => e.stopPropagation()}>
@@ -311,7 +394,7 @@ export default function TaskMode({
         </div>
       )}
 
-      {/* 🌟 薬剤ブランドグループ表示版 */}
+      {/* --- 薬剤カラー選択ポップアップ --- */}
       {showColorPicker && (
         <div style={overlayStyle} onClick={() => setShowColorPicker(null)}>
           <div style={menuBoxStyle} onClick={e => e.stopPropagation()}>
@@ -319,7 +402,6 @@ export default function TaskMode({
             <div style={{fontSize: '13px', color: '#64748b', marginBottom: '15px'}}>{showColorPicker.menu} の薬剤を選択</div>
             
             <div style={{textAlign:'left', maxHeight:'40vh', overflowY:'auto', padding:'5px'}}>
-              {/* オリーブカーキーグループ */}
               <div style={{marginBottom:'15px'}}>
                 <div style={{fontSize:'12px', fontWeight:'bold', color:'#2d6a4f', marginBottom:'8px'}}>【オリーブカーキー】</div>
                 <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px'}}>
@@ -330,7 +412,6 @@ export default function TaskMode({
                 </div>
               </div>
 
-              {/* プルーンアッシュグループ */}
               <div style={{marginBottom:'15px'}}>
                 <div style={{fontSize:'12px', fontWeight:'bold', color:'#4b2c5e', marginBottom:'8px'}}>【プルーンアッシュ】</div>
                 <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px'}}>
@@ -347,6 +428,7 @@ export default function TaskMode({
         </div>
       )}
 
+      {/* --- 当日追加ポップアップ --- */}
       {showAddList && (
         <div style={overlayStyle} onClick={() => setShowAddList(false)}>
           <div style={largeListPopupStyle} onClick={e => e.stopPropagation()}>
@@ -359,7 +441,7 @@ export default function TaskMode({
             </div>
             <div style={scrollListAreaStyle}>
               {users
-                .filter(u => u.facility === activeFacility && !allMembersInTask.some(am => am.name === u.name))
+                .filter(u => u.facility === activeFacility && !plannedMembersForToday.some(am => am.name === u.name))
                 .sort((a, b) => {
                   if (addListSortKey === 'room') return String(a.room).localeCompare(String(b.room), undefined, { numeric: true });
                   return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
@@ -378,7 +460,7 @@ export default function TaskMode({
   );
 }
 
-// 🎨 デザイン定数（変更なし）
+// 🎨 デザイン定数（完全維持）
 const toastStyle = { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', backgroundColor: 'rgba(30, 58, 138, 0.9)', color: 'white', padding: '16px 32px', borderRadius: '50px', zIndex: 20000, fontWeight: 'bold', fontSize: '17px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', pointerEvents: 'none', animation: 'fadeInOut 1.2s ease-in-out' };
 const fixedHeaderWrapperStyle = { position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '1000px', backgroundColor: '#f0f7f4', zIndex: 1000, padding: '8px 15px', boxSizing: 'border-box', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' };
 const statusRowStyle = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', marginBottom: '8px', padding: '4px 0' };
