@@ -47,7 +47,20 @@ export default function TaskMode_PC({
   const [showAddMember, setShowAddMember] = useState(false);
   const [addSearchSort, setAddSearchSort] = useState("room");
 
-  // 現在の施設の予約を特定
+  // 🌟【最重要：セット予約の日程特定ロジック】
+  // 今日の日付が含まれている「セット予約」全体を見つけます
+  const currentBookingSet = bookingList.find(b => 
+    b.facility === activeFacility && 
+    Array.isArray(b.dates) && 
+    b.dates.some(d => formatDateForCompare(d) === todaySlash)
+  );
+
+  // 今回のセッション期間（全日程）を配列化：['2025/12/12', '2025/12/13'...]
+  const sessionDates = currentBookingSet 
+    ? currentBookingSet.dates.map(d => formatDateForCompare(d)) 
+    : [todaySlash];
+
+  // 現在の施設の「今日」の予約枠を特定（追加用）
   const currentBooking = bookingList.find(b =>
     b.facility === activeFacility && formatDateForCompare(b.date) === todaySlash
   );
@@ -61,10 +74,18 @@ export default function TaskMode_PC({
     }
   }, [facilities, activeFacility, setActiveFacility]);
 
-  // 進捗ステータス判定
-  const doneMembers = allMembersInTask.filter(m => historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility));
+  // 🌟【進捗ステータス判定：セッション期間を考慮】
+  // 完了：今回のセット期間中に1回でも履歴がある人
+  const doneMembers = allMembersInTask.filter(m => 
+    historyList.some(h => h.name === m.name && sessionDates.includes(h.date) && h.facility === activeFacility)
+  );
+  // キャンセル：ステータスがcancelの人
   const cancelMembers = allMembersInTask.filter(m => m.status === 'cancel');
-  const yetMembers = allMembersInTask.filter(m => !historyList.some(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility) && m.status !== 'cancel');
+  // 未完了：完了でもキャンセルでもない人
+  const yetMembers = allMembersInTask.filter(m => 
+    !historyList.some(h => h.name === m.name && sessionDates.includes(h.date) && h.facility === activeFacility) && 
+    m.status !== 'cancel'
+  );
 
   const totalRaw = allMembersInTask.length;
   const doneCount = doneMembers.length;
@@ -122,7 +143,6 @@ export default function TaskMode_PC({
     closeAllModals();
   };
 
-  // 実際のキャンセル実行
   const executeCancelMember = async (m) => {
     const updatedMembers = allMembersInTask.map(member => member.name === m.name ? { ...member, status: 'cancel' } : member);
     await updateBookingInCloud(updatedMembers);
@@ -130,8 +150,13 @@ export default function TaskMode_PC({
   };
 
   const handleRestore = async (m) => {
-    setHistoryList(prev => prev.filter(h => !(h.name === m.name && h.date === todaySlash && h.facility === activeFacility)));
-    await supabase.from('history').delete().match({ name: m.name, date: todaySlash, facility: activeFacility });
+    // セッション期間中の履歴をすべて削除対象にする
+    setHistoryList(prev => prev.filter(h => !(h.name === m.name && sessionDates.includes(h.date) && h.facility === activeFacility)));
+    // DBからも今回のセッション期間の履歴を消す
+    await supabase.from('history').delete()
+      .match({ name: m.name, facility: activeFacility })
+      .in('date', sessionDates);
+
     const updatedMembers = allMembersInTask.map(member => member.name === m.name ? { ...member, status: 'yet' } : member);
     await updateBookingInCloud(updatedMembers);
     setShowReset(null);
@@ -143,7 +168,6 @@ export default function TaskMode_PC({
     await supabase.from('bookings').upsert(updatedBooking);
   };
 
-  // 保存して戻る処理
   const handleFinalSave = async () => {
     try {
       setSaveMessage("クラウドに保存中...");
@@ -172,7 +196,7 @@ export default function TaskMode_PC({
           <div>
             <h2 style={{ margin: 0, color: '#1e3a8a' }}>✂️ 現場タスク入力 (PC)</h2>
             <div style={progressValue}>
-              {totalRaw}名中 / <span style={{color:'#10b981'}}>{doneCount}名 完了</span> / 残り {remainingCount}名 / <span style={{color:'#ef4444'}}>キャンセル {cancelCount}名</span>
+              {totalRaw}名中 / <span style={{color:'#10b981'}}>{doneCount}名 完了</span> / 残り {remainingCount}名 / <span style={{color:'#ef4444'}}>欠席 {cancelCount}名</span>
             </div>
           </div>
           <div style={{display:'flex', gap:'10px'}}>
@@ -183,6 +207,7 @@ export default function TaskMode_PC({
       </div>
 
       <div style={mainLayout}>
+        {/* 左カラム：施術待ち */}
         <section style={columnStyle}>
           <div style={columnHeader}>
             <h3>⏳ 施術待ち</h3>
@@ -204,9 +229,13 @@ export default function TaskMode_PC({
                 <button onClick={(e) => {e.stopPropagation(); setShowCancelConfirm(m)}} style={inlineCancelBtn}>キャンセル</button>
               </div>
             ))}
+            {yetMembers.length === 0 && (
+              <div style={{textAlign:'center', color:'#94a3b8', marginTop:'100px'}}>待ちの方はいません</div>
+            )}
           </div>
         </section>
 
+        {/* 右カラム：完了・キャンセル */}
         <section style={{...columnStyle, backgroundColor: '#f8fafc', borderLeft: '2px solid #e2e8f0'}}>
           <div style={columnHeader}>
             <h3>✅ 完了・キャンセル</h3>
@@ -217,14 +246,24 @@ export default function TaskMode_PC({
           </div>
           <div style={scrollArea} ref={doneListRef}>
             {[...doneMembers, ...cancelMembers].sort(sortFn(rightSort)).map((m, idx) => {
-              const hist = historyList.find(h => h.name === m.name && h.date === todaySlash && h.facility === activeFacility);
+              // 今回のセッション期間内での履歴を探す
+              const hist = historyList.find(h => h.name === m.name && sessionDates.includes(h.date) && h.facility === activeFacility);
               const isCancel = m.status === 'cancel';
               return (
                 <div key={idx} onClick={() => setShowReset(m)} style={{...doneCardStyle, borderColor: isCancel ? '#fecaca' : '#10b981'}}>
                   <div style={{flex:1}}>
                     <div style={{fontSize:'12px', color:'#64748b'}}>{m.room}号室</div>
                     <b>{m.name} 様</b>
-                    {hist && <div style={doneMenuDetail}>{hist.menu}</div>}
+                    {hist && (
+                      <div style={{marginTop:'4px'}}>
+                        <div style={doneMenuDetail}>{hist.menu}</div>
+                        {hist.date !== todaySlash && (
+                          <div style={{fontSize:'10px', color:'#10b981', fontWeight:'bold', marginTop:'2px'}}>
+                            ✨ {hist.date.split('/')[2]}日に施術済み
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <span style={{...badgeStyle, backgroundColor: isCancel ? '#ef4444' : '#10b981'}}>
                     {isCancel ? '欠席' : '完了'}
@@ -263,6 +302,7 @@ export default function TaskMode_PC({
         </div>
       )}
 
+      {/* 完了ポップアップ (TaskConfirmMode) */}
       {showConfirmPopup && (
         <div style={fullOverlayStyle} onClick={() => setShowConfirmPopup(false)}>
           <div style={popupWrapperStyle} onClick={e => e.stopPropagation()}>
@@ -285,6 +325,7 @@ export default function TaskMode_PC({
         </div>
       )}
 
+      {/* 当日追加ポップアップ */}
       {showAddMember && (
         <div style={overlayStyle} onClick={() => setShowAddMember(false)}>
           <div style={{...modalStyle, width:'500px', maxHeight:'80vh', display:'flex', flexDirection:'column'}} onClick={e => e.stopPropagation()}>
@@ -306,6 +347,7 @@ export default function TaskMode_PC({
         </div>
       )}
 
+      {/* カラーリタッチ・全体選択 */}
       {showColorTypePicker && (
         <div style={overlayStyle} onClick={() => setShowColorTypePicker(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
@@ -319,7 +361,7 @@ export default function TaskMode_PC({
         </div>
       )}
 
-      {/* 🌟 薬剤ブランドグループ表示版 */}
+      {/* 薬剤ブランドグループ表示 */}
       {showColorNumberPicker && (
         <div style={overlayStyle} onClick={() => setShowColorNumberPicker(null)}>
           <div style={{...modalStyle, width: '600px'}} onClick={e => e.stopPropagation()}>
@@ -329,7 +371,7 @@ export default function TaskMode_PC({
             </p>
             
             <div style={{textAlign:'left', maxHeight:'50vh', overflowY:'auto', padding:'0 10px'}}>
-              {/* --- オリーブカーキー (OK) グループ --- */}
+              {/* オリーブカーキー (OK) */}
               <div style={{marginBottom:'20px'}}>
                 <div style={{fontSize:'14px', fontWeight:'bold', color:'#2d6a4f', marginBottom:'8px'}}>【オリーブカーキー】</div>
                 <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:'10px'}}>
@@ -339,7 +381,7 @@ export default function TaskMode_PC({
                 </div>
               </div>
 
-              {/* --- プルーンアッシュ (PA) グループ --- */}
+              {/* プルーンアッシュ (PA) */}
               <div style={{marginBottom:'20px'}}>
                 <div style={{fontSize:'14px', fontWeight:'bold', color:'#4b2c5e', marginBottom:'8px'}}>【プルーンアッシュ】</div>
                 <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:'10px'}}>
@@ -355,6 +397,7 @@ export default function TaskMode_PC({
         </div>
       )}
 
+      {/* 未完了に戻すポップアップ */}
       {showReset && (
         <div style={overlayStyle} onClick={() => setShowReset(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
@@ -368,7 +411,7 @@ export default function TaskMode_PC({
   );
 }
 
-// デザイン設定
+// 🎨 デザイン定数（省略なし）
 const confirmYesBtn = { width: '100%', padding: '16px', borderRadius: '15px', border: 'none', backgroundColor: '#ef4444', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' };
 const confirmNoBtn = { width: '100%', padding: '16px', borderRadius: '15px', border: 'none', backgroundColor: '#64748b', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' };
 const toastStyle = { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', backgroundColor: 'rgba(30, 58, 138, 0.9)', color: 'white', padding: '16px 32px', borderRadius: '50px', zIndex: 20000, fontWeight: 'bold', fontSize: '18px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', pointerEvents: 'none' };
@@ -380,7 +423,7 @@ const mainLayout = { display:'flex', flex:1, overflow:'hidden', padding:'10px', 
 const columnStyle = { flex:1, display:'flex', flexDirection:'column', backgroundColor:'white', borderRadius:'12px', boxShadow:'0 2px 5px rgba(0,0,0,0.05)' };
 const columnHeader = { padding:'10px 15px', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center' };
 const scrollArea = { flex:1, overflowY:'auto', padding:'10px', scrollBehavior: 'smooth' };
-const cardStyle = { display:'flex', alignItems:'center', padding:'15px', borderRadius:'10px', border:'1px solid #e2e8f0', marginBottom:'10px', cursor:'pointer', backgroundColor:'#fff' };
+const cardStyle = { display:'flex', alignItems:'center', padding:'15px', borderRadius:'10px', border:'1px solid #e2e8f0', marginBottom:'10px', cursor:'pointer', backgroundColor:'#fff', transition:'0.2s' };
 const doneCardStyle = { display:'flex', padding:'12px', border:'2px solid', marginBottom:'8px', borderRadius:'10px', backgroundColor:'#fff', cursor:'pointer' };
 const inlineCancelBtn = { padding:'6px 12px', backgroundColor:'#fff', color:'#ef4444', border:'1px solid #ef4444', borderRadius:'6px', fontSize:'11px', fontWeight:'bold', cursor:'pointer' };
 const addMemberBtn = { padding:'8px 20px', backgroundColor:'#1e3a8a', color:'white', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer' };
@@ -398,8 +441,7 @@ const overlayStyle = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.
 const modalStyle = { backgroundColor:'white', padding:'25px', borderRadius:'20px', width:'400px', textAlign:'center' };
 const modalGrid = { display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginTop:'15px' };
 const menuChoiceBtn = { padding:'20px 10px', borderRadius:'12px', border:'2px solid #e2e8f0', fontWeight:'bold', cursor:'pointer' };
-const colorGrid = { display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:'8px', marginTop:'15px' };
-const colorBtnStyle = { padding:'12px 2px', border:'1px solid #cbd5e1', borderRadius:'6px', cursor:'pointer' };
+const colorBtnStyle = { padding:'12px 2px', border:'1px solid #cbd5e1', borderRadius:'6px', cursor:'pointer', fontSize:'12px', fontWeight:'bold' };
 const modalCloseBtn = { marginTop:'10px', width:'100%', padding:'10px', border:'none', color:'#64748b', cursor:'pointer' };
 const roomNumStyle = { fontSize:'12px', color:'#64748b' };
 const fullOverlayStyle = { position:'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 10000, display:'flex', justifyContent:'center', alignItems:'center', backdropFilter: 'blur(4px)' };

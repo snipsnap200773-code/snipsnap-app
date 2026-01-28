@@ -155,25 +155,32 @@ export default function AdminScheduleManager({
                 <h2 style={{ ...facilityHeaderStyle, backgroundColor: fColors.bg, color: fColors.text, border: `1px solid ${fColors.border}` }}>🏠 {facility}</h2>
                 {Object.keys(groupedData[facility]).sort().map(monthKey => {
                   const rawItems = groupedData[facility][monthKey];
+                  
+                  // 🌟【最重要：月間集計ロジックの修正】
                   const monthBookings = bookingList.filter(b => b.facility === facility && b.date.startsWith(monthKey));
-                  const plannedMemberNames = new Set(monthBookings.flatMap(b => b.members?.map(m => m.name) || []));
-                  const facilityUsersCount = allUsers.filter(u => u.facility === facility).length;
-                  const basePlannedCount = plannedMemberNames.size > 0 ? plannedMemberNames.size : facilityUsersCount;
-
-                  const statsMap = {};
-                  let runningProcessedCount = 0;
-                  [...rawItems].sort((a, b) => a.date.localeCompare(b.date)).forEach(item => {
-                    const finishedOnDay = historyList.filter(h => h.date === item.date.replace(/-/g, '/') && h.facility === facility);
-                    const cancelledOnDay = item.members?.filter(m => m.status === 'cancel') || [];
-                    const extraOnDayCount = finishedOnDay.filter(h => !plannedMemberNames.has(h.name) && !allUsers.some(u => u.name === h.name && u.facility === facility)).length;
-                    const dayProcessedCount = finishedOnDay.length + cancelledOnDay.length;
-                    statsMap[item.date] = { 
-                      planned: basePlannedCount + extraOnDayCount, 
-                      processed: runningProcessedCount + dayProcessedCount,
-                      finished: finishedOnDay.length + cancelledOnDay.length
-                    };
-                    runningProcessedCount += dayProcessedCount;
+                  const plannedMemberNamesSet = new Set(monthBookings.flatMap(b => b.members?.map(m => m.name) || []));
+                  const monthHistory = historyList.filter(h => h.date.startsWith(monthKey.replace(/-/g, '/')) && h.facility === facility);
+                  
+                  // 月間のキャンセル（欠席）扱いの人を抽出
+                  const cancelledMemberNamesSet = new Set();
+                  monthBookings.forEach(b => {
+                    b.members?.forEach(m => {
+                      if (m.status === 'cancel') cancelledMemberNamesSet.add(m.name);
+                    });
                   });
+
+                  // 当日追加の人を含めた「月間の実総数」
+                  const allUniqueNamesInMonth = new Set([
+                    ...plannedMemberNamesSet,
+                    ...monthHistory.map(h => h.name)
+                  ]);
+
+                  const totalPlannedInMonth = allUniqueNamesInMonth.size;
+                  
+                  // 月間での「終了済み（施術済 + 欠席）」の総数
+                  const totalDoneInMonthCount = Array.from(allUniqueNamesInMonth).filter(name => 
+                    monthHistory.some(h => h.name === name) || cancelledMemberNamesSet.has(name)
+                  ).length;
 
                   return (
                     <div key={monthKey} style={cardStyle}>
@@ -184,32 +191,30 @@ export default function AdminScheduleManager({
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         {rawItems.sort((a, b) => a.date.localeCompare(b.date)).map((item, idx) => {
                           const isPast = item.date < todayStr;
-                          const stats = statsMap[item.date];
-                          const isAllMonthFinished = stats.processed >= stats.planned && stats.planned > 0;
-                          const shouldDisable = isPast || isAllMonthFinished;
+                          const isAllMonthFinished = totalDoneInMonthCount >= totalPlannedInMonth && totalPlannedInMonth > 0;
+                          const shouldDisable = isPast && !isAllMonthFinished;
 
                           return (
                             <div key={idx} style={{ 
                                 ...dayBoxStyle, 
-                                borderLeft: `6px solid ${shouldDisable ? '#cbd5e1' : (item.confirmed ? fColors.border : '#3b82f6')}`, 
-                                opacity: shouldDisable ? 0.5 : 1, 
-                                backgroundColor: shouldDisable ? '#f1f5f9' : 'white',
+                                borderLeft: `6px solid ${isAllMonthFinished ? '#10b981' : (item.confirmed ? fColors.border : '#3b82f6')}`, 
+                                backgroundColor: isAllMonthFinished ? '#f0fdf4' : 'white',
                             }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div style={{ textAlign: 'left' }}>
-                                  <div style={{ fontSize: '15px', fontWeight: 'bold', color: shouldDisable ? '#64748b' : '#1e293b' }}>
+                                  <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#1e293b' }}>
                                     {item.date.replace(/-/g, '/')}({getDayName(item.date)})
                                   </div>
                                   <div style={{ fontSize: '13px', marginTop: '4px' }}>
                                     {item.confirmed ? (
-                                      <span style={{ color: shouldDisable ? '#94a3b8' : (stats.finished > 0 ? '#059669' : '#64748b') }}>
-                                        ✅ {isAllMonthFinished ? "今月分は終了しました" : `進捗: ${stats.processed} / ${stats.planned}`}
+                                      <span style={{ color: isAllMonthFinished ? '#059669' : '#64748b', fontWeight: 'bold' }}>
+                                        {isAllMonthFinished ? "✅ 今月分は終了しました" : `月間進捗: ${totalDoneInMonthCount} / ${totalPlannedInMonth}`}
                                       </span>
-                                    ) : <span style={{ color: shouldDisable ? '#94a3b8' : '#3b82f6' }}>● キープ中（未確定）</span>}
+                                    ) : <span style={{ color: '#3b82f6' }}>● キープ中（未確定）</span>}
                                   </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px' }}>
-                                  {item.confirmed && !isAllMonthFinished && (
+                                  {item.confirmed && (
                                     <button onClick={() => setSelectedDetail({ ...item, facility, allMonthlyPlannedMembers: Array.from(new Set(rawItems.flatMap(ri => ri.members || []))) })} style={{...detailBtnStyle, backgroundColor: '#3b82f6'}}>詳細</button>
                                   )}
                                   {canDeleteDate(facility, item.date) && (
@@ -253,21 +258,21 @@ export default function AdminScheduleManager({
         const doneToday = candidates.filter(m => finishedOnDay.some(h => h.name === m.name))
           .map(m => ({ ...m, menu: finishedOnDay.find(fh => fh.name === m.name).menu }));
 
-        // 2. 本日より前に終わった人（三土手さんのリクエスト：1/3に終了した人など）
+        // 2. 本日より前に終わった人（三土手さんのリクエスト：過去日で終了した人）
         const doneOtherDays = candidates.filter(m => finishedBeforeTodayNames.includes(m.name))
-          .map(m => ({ ...m, doneDate: finishedBeforeToday.find(fh => fh.name === m.name).date }));
+          .map(m => ({ ...m, doneDate: finishedBeforeToday.find(fh => fh.name === m.name).doneDate || finishedBeforeToday.find(fh => fh.name === m.name).date }));
 
         // 3. キャンセル（欠席）した人
         const cancelList = candidates.filter(m => m.status === 'cancel' && !doneToday.some(d => d.name === m.name) && !doneOtherDays.some(d => d.name === m.name));
 
-        // 4. まだ終わっていない人（当日・過去日・キャンセルのどれにもいない人）
+        // 4. まだ終わっていない人
         const yetList = candidates.filter(m => 
           !doneToday.some(h => h.name === m.name) && 
           !doneOtherDays.some(h => h.name === m.name) && 
           m.status !== 'cancel'
         );
 
-        const sortFn = (list, key) => [...list].sort((a, b) => key === 'room' ? a.room.toString().localeCompare(b.room.toString(), undefined, { numeric: true }) : (a.kana || a.name).localeCompare(b.kana || b.name, 'ja'));
+        const sortFn = (list, key) => [...list].sort((a, b) => key === 'room' ? (a.room||'').toString().localeCompare((b.room||'').toString(), undefined, { numeric: true }) : (a.kana || a.name || '').localeCompare((b.kana || b.name || ''), 'ja'));
 
         return (
           <div style={modalOverlayStyle} onClick={() => setSelectedDetail(null)}>
@@ -291,14 +296,14 @@ export default function AdminScheduleManager({
                     </div>
                   )}
 
-                  {/* 📅 別日程で終了済み（三土手さんのリクエスト枠） */}
+                  {/* 📅 別日程で終了済み */}
                   {doneOtherDays.length > 0 && (
                     <div style={{...finishedDayBoxStyle, backgroundColor: '#f1f5f9'}}>
-                      <div style={{...sectionTitleStyle, color: '#475569'}}>📅 別日程で終了済み ({doneOtherDays.length}名)</div>
+                      <div style={{...sectionTitleStyle, color: '#475569'}}>📅 他の日程で終了済み ({doneOtherDays.length}名)</div>
                       {sortFn(doneOtherDays, doneSortKey).map((m, i) => (
                         <div key={i} style={memberRowStyle}>
                           <span>{m.room} <b>{m.name} 様</b></span>
-                          <span style={{...finishedBadgeStyle, backgroundColor: '#e2e8f0', color: '#64748b'}}>{m.doneDate} 済</span>
+                          <span style={{...finishedBadgeStyle, backgroundColor: '#e2e8f0', color: '#64748b'}}>{m.doneDate.split('/')[2]}日 完了済</span>
                         </div>
                       ))}
                     </div>
@@ -338,9 +343,9 @@ export default function AdminScheduleManager({
   );
 }
 
-// 🎨 デザイン定数（追加・変更分のみ抜粋）
+// 🎨 デザイン定数（完全維持）
 const sectionTitleStyle = { fontSize: '12px', fontWeight: 'bold', color: '#10b981', marginBottom: '8px' };
-const dayBoxStyle = { padding: '12px 15px', borderRadius: '15px', border: '1px solid #e2e8f0', transition: 'all 0.2s' };
+const dayBoxStyle = { padding: '12px 15px', borderRadius: '15px', border: '1px solid #e2e8f0', transition: 'all 0.2s', marginBottom: '8px' };
 const detailBtnStyle = { color: 'white', border: 'none', borderRadius: '8px', padding: '8px 16px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' };
 const allCancelBtnStyle = { backgroundColor: '#fff1f2', color: '#e11d48', border: '1px solid #fecdd3', padding: '4px 12px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' };
 const monthNavContainerStyle = { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', marginBottom: '20px', backgroundColor: 'white', padding: '12px', borderRadius: '16px' };
