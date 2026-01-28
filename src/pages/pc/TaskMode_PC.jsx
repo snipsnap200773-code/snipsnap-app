@@ -37,6 +37,7 @@ export default function TaskMode_PC({
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
   };
   const todaySlash = getTodayStr();
+  const monthKeySlash = todaySlash.substring(0, 7); // 🌟 例: "2026/01" 形式を取得
   
   const [leftSort, setLeftSort] = useState("room");
   const [rightSort, setRightSort] = useState("room");
@@ -55,12 +56,12 @@ export default function TaskMode_PC({
     b.dates.some(d => formatDateForCompare(d) === todaySlash)
   );
 
-  // 今回のセッション期間（全日程）を配列化：['2025/12/12', '2025/12/13'...]
+  // 今回のセッション期間（全日程）を配列化
   const sessionDates = currentBookingSet 
     ? currentBookingSet.dates.map(d => formatDateForCompare(d)) 
     : [todaySlash];
 
-  // 現在の施設の「今日」の予約枠を特定（追加用）
+  // 現在の施設の「今日」の予約枠を特定
   const currentBooking = bookingList.find(b =>
     b.facility === activeFacility && formatDateForCompare(b.date) === todaySlash
   );
@@ -74,16 +75,16 @@ export default function TaskMode_PC({
     }
   }, [facilities, activeFacility, setActiveFacility]);
 
-  // 🌟【進捗ステータス判定：セッション期間を考慮】
-  // 完了：今回のセット期間中に1回でも履歴がある人
+  // 🌟【修正：進捗ステータス判定を「月間履歴」に拡張】
+  // 完了：今月、この施設で既に履歴がある人
   const doneMembers = allMembersInTask.filter(m => 
-    historyList.some(h => h.name === m.name && sessionDates.includes(h.date) && h.facility === activeFacility)
+    historyList.some(h => h.name === m.name && h.facility === activeFacility && h.date.startsWith(monthKeySlash))
   );
   // キャンセル：ステータスがcancelの人
   const cancelMembers = allMembersInTask.filter(m => m.status === 'cancel');
-  // 未完了：完了でもキャンセルでもない人
+  // 未完了：今月の履歴がなく、キャンセルでもない人
   const yetMembers = allMembersInTask.filter(m => 
-    !historyList.some(h => h.name === m.name && sessionDates.includes(h.date) && h.facility === activeFacility) && 
+    !historyList.some(h => h.name === m.name && h.facility === activeFacility && h.date.startsWith(monthKeySlash)) && 
     m.status !== 'cancel'
   );
 
@@ -150,12 +151,10 @@ export default function TaskMode_PC({
   };
 
   const handleRestore = async (m) => {
-    // セッション期間中の履歴をすべて削除対象にする
-    setHistoryList(prev => prev.filter(h => !(h.name === m.name && sessionDates.includes(h.date) && h.facility === activeFacility)));
-    // DBからも今回のセッション期間の履歴を消す
-    await supabase.from('history').delete()
-      .match({ name: m.name, facility: activeFacility })
-      .in('date', sessionDates);
+    // 今月の該当施設の履歴を削除対象にする
+    setHistoryList(prev => prev.filter(h => !(h.name === m.name && h.date.startsWith(monthKeySlash) && h.facility === activeFacility)));
+    // DBからも今月の履歴を消す
+    await supabase.from('history').delete().match({ name: m.name, facility: activeFacility }).like('date', `${monthKeySlash}%`);
 
     const updatedMembers = allMembersInTask.map(member => member.name === m.name ? { ...member, status: 'yet' } : member);
     await updateBookingInCloud(updatedMembers);
@@ -246,8 +245,8 @@ export default function TaskMode_PC({
           </div>
           <div style={scrollArea} ref={doneListRef}>
             {[...doneMembers, ...cancelMembers].sort(sortFn(rightSort)).map((m, idx) => {
-              // 今回のセッション期間内での履歴を探す
-              const hist = historyList.find(h => h.name === m.name && sessionDates.includes(h.date) && h.facility === activeFacility);
+              // 今月の履歴を探す
+              const hist = historyList.find(h => h.name === m.name && h.facility === activeFacility && h.date.startsWith(monthKeySlash));
               const isCancel = m.status === 'cancel';
               return (
                 <div key={idx} onClick={() => setShowReset(m)} style={{...doneCardStyle, borderColor: isCancel ? '#fecaca' : '#10b981'}}>

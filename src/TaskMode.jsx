@@ -28,6 +28,7 @@ export default function TaskMode({
 
   const todayStr = getTodayStr();
   const todaySlash = todayStr.replace(/-/g, '/');
+  const monthKeySlash = todaySlash.substring(0, 7); // 🌟 2026/01 形式を取得
   
   // --- 状態管理 ---
   const [sortBy, setSortBy] = useState("room");
@@ -40,14 +41,12 @@ export default function TaskMode({
   const [showCancelConfirm, setShowCancelConfirm] = useState(null);
 
   // 🌟【最重要：セット予約の日程特定ロジック】
-  // 今日の日付が含まれている「セット予約」の塊を見つけます
   const currentBookingSet = bookingList.find(b => 
     b.facility === activeFacility && 
     Array.isArray(b.dates) && 
     b.dates.some(d => d.replace(/\//g, '-') === todayStr)
   );
 
-  // 今回の訪問セッション（全日程）を配列化：['2025/12/12', '2025/12/13'...]
   const sessionDates = currentBookingSet 
     ? currentBookingSet.dates.map(d => d.replace(/-/g, '/')) 
     : [todaySlash];
@@ -73,13 +72,12 @@ export default function TaskMode({
     }
   }, [facilities, activeFacility, setActiveFacility]);
 
-  // 🌟【進捗計算ロジック】
-  // セッション期間中（sessionDates）のいずれかの日に履歴があれば「完了」とみなす
+  // 🌟【進捗計算ロジック：今月の履歴全体を対象に拡張】
   const doneCount = allMembersInTask.filter(m => 
     historyList.some(h => 
       h.name === m.name && 
-      sessionDates.includes(h.date) && 
-      h.facility === activeFacility
+      h.facility === activeFacility &&
+      h.date.startsWith(monthKeySlash) // 🌟 日付一致ではなく「今月の履歴にあるか」で判定
     )
   ).length;
 
@@ -126,9 +124,9 @@ export default function TaskMode({
 
   // 完了リセット（未完了に戻す）
   const handleResetMember = async (targetMember) => {
-    // セッション期間中の該当者の履歴をすべて削除対象にする
+    // 今月の該当施設の履歴をすべて削除対象にする
     setHistoryList(prev => prev.filter(h => 
-      !(h.name === targetMember.name && sessionDates.includes(h.date) && h.facility === activeFacility)
+      !(h.name === targetMember.name && h.date.startsWith(monthKeySlash) && h.facility === activeFacility)
     ));
     const updatedMembers = allMembersInTask.map(m => 
       m.name === targetMember.name ? { ...m, status: 'yet' } : m
@@ -137,9 +135,10 @@ export default function TaskMode({
       b.id === currentBooking.id ? { ...b, members: updatedMembers } : b
     ));
     
+    // DBからも今月の履歴を消す
     await supabase.from('history').delete()
       .match({ name: targetMember.name, facility: activeFacility })
-      .in('date', sessionDates);
+      .like('date', `${monthKeySlash}%`);
       
     setShowReset(null);
   };
@@ -187,10 +186,10 @@ export default function TaskMode({
     setShowMenu(null); setShowColorPicker(null);
   };
 
-  // 🌟【並び替え：セッション期間で完了判定】
+  // 🌟【並び替え：今月の履歴で完了判定】
   const sortedDisplayMembers = [...allMembersInTask].sort((a, b) => {
-    const isDoneA = historyList.some(h => h.name === a.name && sessionDates.includes(h.date) && h.facility === activeFacility);
-    const isDoneB = historyList.some(h => h.name === b.name && sessionDates.includes(h.date) && h.facility === activeFacility);
+    const isDoneA = historyList.some(h => h.name === a.name && h.facility === activeFacility && h.date.startsWith(monthKeySlash));
+    const isDoneB = historyList.some(h => h.name === b.name && h.facility === activeFacility && h.date.startsWith(monthKeySlash));
     
     const statusA = isDoneA ? 'done' : (a.status || 'yet');
     const statusB = isDoneB ? 'done' : (b.status || 'yet');
@@ -259,8 +258,8 @@ export default function TaskMode({
           {allMembersInTask.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {sortedDisplayMembers.map((m, idx) => {
-                // セッション期間中の履歴有無を判定
-                const hist = historyList.find(h => h.name === m.name && sessionDates.includes(h.date) && h.facility === activeFacility);
+                // 🌟【修正：今月の履歴を探す】
+                const hist = historyList.find(h => h.name === m.name && h.facility === activeFacility && h.date.startsWith(monthKeySlash));
                 const isDone = !!hist;
                 const isCancel = m.status === 'cancel';
                 
@@ -281,9 +280,10 @@ export default function TaskMode({
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
                           {(m.menus || ["カット"]).join(' / ')} {m.isExtra && "★当日"}
                         </div>
+                        {/* 🌟 過去日の施術済ラベルを表示 */}
                         {isDone && (
                           <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 'bold', marginTop: '2px' }}>
-                            ✨ {hist.date === todaySlash ? '今日' : hist.date.split('/')[2] + '日'} に施術済み
+                            ✨ {hist.date !== todaySlash ? `${hist.date.split('/')[2]}日に ` : ''}施術済み
                           </div>
                         )}
                       </div>
