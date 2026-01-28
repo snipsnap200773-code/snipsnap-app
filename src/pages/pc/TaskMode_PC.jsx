@@ -23,7 +23,6 @@ export default function TaskMode_PC({
   const finishBtnRef = useRef(null);
   const [showConfirmPopup, setShowConfirmPopup] = useState(false);
   const [saveMessage, setSaveMessage] = useState(""); 
-  // 🌟 追加：キャンセル確認用ポップアップの状態
   const [showCancelConfirm, setShowCancelConfirm] = useState(null);
 
   // 日付形式の不一致を解消
@@ -37,10 +36,11 @@ export default function TaskMode_PC({
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
   };
   const todaySlash = getTodayStr();
-  const monthKeySlash = todaySlash.substring(0, 7); // 🌟 例: "2026/01" 形式を取得
+  const monthKeySlash = todaySlash.substring(0, 7); // 例: "2026/01"
   
   const [leftSort, setLeftSort] = useState("room");
   const [rightSort, setRightSort] = useState("room");
+  const [showConfirmDone, setShowConfirmDone] = useState(null); // 🌟 追加：完了確認ポップアップ
   const [showColorTypePicker, setShowColorTypePicker] = useState(null);
   const [showColorNumberPicker, setShowColorNumberPicker] = useState(null);
   const [pendingMenuName, setPendingMenuName] = useState("");
@@ -48,15 +48,13 @@ export default function TaskMode_PC({
   const [showAddMember, setShowAddMember] = useState(false);
   const [addSearchSort, setAddSearchSort] = useState("room");
 
-  // 🌟【最重要：セット予約の日程特定ロジック】
-  // 今日の日付が含まれている「セット予約」全体を見つけます
+  // 🌟 セット予約の日程特定ロジック
   const currentBookingSet = bookingList.find(b => 
     b.facility === activeFacility && 
     Array.isArray(b.dates) && 
     b.dates.some(d => formatDateForCompare(d) === todaySlash)
   );
 
-  // 今回のセッション期間（全日程）を配列化
   const sessionDates = currentBookingSet 
     ? currentBookingSet.dates.map(d => formatDateForCompare(d)) 
     : [todaySlash];
@@ -75,21 +73,18 @@ export default function TaskMode_PC({
     }
   }, [facilities, activeFacility, setActiveFacility]);
 
-  // 🌟【修正：進捗ステータス判定を「月間履歴」に拡張】
-  // 完了：今月、この施設で既に履歴がある人
-  const doneMembers = allMembersInTask.filter(m => 
+  // 進捗ステータス判定（月間基準）
+  const doneMembersRaw = allMembersInTask.filter(m => 
     historyList.some(h => h.name === m.name && h.facility === activeFacility && h.date.startsWith(monthKeySlash))
   );
-  // キャンセル：ステータスがcancelの人
   const cancelMembers = allMembersInTask.filter(m => m.status === 'cancel');
-  // 未完了：今月の履歴がなく、キャンセルでもない人
   const yetMembers = allMembersInTask.filter(m => 
     !historyList.some(h => h.name === m.name && h.facility === activeFacility && h.date.startsWith(monthKeySlash)) && 
     m.status !== 'cancel'
   );
 
   const totalRaw = allMembersInTask.length;
-  const doneCount = doneMembers.length;
+  const doneCount = doneMembersRaw.length;
   const cancelCount = cancelMembers.length;
   const remainingCount = yetMembers.length;
 
@@ -106,36 +101,33 @@ export default function TaskMode_PC({
     return (a.kana || a.name).localeCompare(b.kana || b.name, 'ja');
   };
 
+  // 🌟【新規追加：メンバークリック時の初動】
   const handleMemberClick = (m) => {
-    const hopeMenus = m.menus || [];
-    if (hopeMenus.includes('カラー')) setShowColorTypePicker(m);
-    else completeTask(m, hopeMenus.join('＆') || 'カット');
+    setShowConfirmDone(m); // まず「施術完了ですか？」を出す
+  };
+
+  // 🌟【新規追加：確認ポップアップでOKを押した時】
+  const onConfirmDoneOk = (m) => {
+    const hopeMenus = m.menus || ["カット"];
+    setShowConfirmDone(null);
+    if (hopeMenus.includes("カラー")) {
+      setShowColorTypePicker(m); // カラーがある場合は既存の選択フローへ
+    } else {
+      completeTask(m, hopeMenus.join('＆') || 'カット'); // それ以外は完了へ
+    }
   };
 
   const completeTask = async (m, finalMenu, colorNum = "") => {
     const menuName = finalMenu + (colorNum ? ` ${colorNum}` : "");
     let price = 0;
-    const basePrices = {
-      'カット': 1600, 'カラー': 5600, 'パーマ': 4600,
-      'カラー（リタッチ）': 4600, 'カラー（全体）': 5600
-    };
-    if (basePrices[finalMenu]) {
-      price = basePrices[finalMenu];
-    } else if (finalMenu.includes('カラー')) {
-      if (finalMenu.includes('カット')) {
-        price = (finalMenu.includes('リタッチ') || finalMenu.includes('(リ)')) ? 6100 : 7100;
-      } else {
-        price = (finalMenu.includes('リタッチ') || finalMenu.includes('(リ)')) ? 4600 : 5600;
-      }
-    } else if (finalMenu.includes('カット')) {
-      price = basePrices['カット'];
-    } else if (finalMenu.includes('パーマ')) {
-      price = basePrices['パーマ'];
-    }
+    const basePrices = { 'カット': 1600, 'カラー': 5600, 'パーマ': 4600, 'カラー（リタッチ）': 4600, 'カラー（全体）': 5600 };
+    if (basePrices[finalMenu]) { price = basePrices[finalMenu]; }
+    else if (finalMenu.includes('カラー')) {
+      price = finalMenu.includes('カット') ? (finalMenu.includes('リタッチ') ? 6100 : 7100) : (finalMenu.includes('リタッチ') ? 4600 : 5600);
+    } else if (finalMenu.includes('カット')) { price = basePrices['カット']; }
 
     setHistoryList(prev => [...prev, {
-      date: todaySlash, facility: activeFacility, room: m.room,
-      name: m.name, kana: m.kana, menu: menuName, price: price, status: 'done'
+      date: todaySlash, facility: activeFacility, room: m.room, name: m.name, kana: m.kana, menu: menuName, price: price, status: 'done'
     }]);
 
     const updatedMembers = allMembersInTask.map(member => member.name === m.name ? { ...member, status: 'done' } : member);
@@ -151,11 +143,8 @@ export default function TaskMode_PC({
   };
 
   const handleRestore = async (m) => {
-    // 今月の該当施設の履歴を削除対象にする
     setHistoryList(prev => prev.filter(h => !(h.name === m.name && h.date.startsWith(monthKeySlash) && h.facility === activeFacility)));
-    // DBからも今月の履歴を消す
     await supabase.from('history').delete().match({ name: m.name, facility: activeFacility }).like('date', `${monthKeySlash}%`);
-
     const updatedMembers = allMembersInTask.map(member => member.name === m.name ? { ...member, status: 'yet' } : member);
     await updateBookingInCloud(updatedMembers);
     setShowReset(null);
@@ -170,23 +159,27 @@ export default function TaskMode_PC({
   const handleFinalSave = async () => {
     try {
       setSaveMessage("クラウドに保存中...");
-      if (currentBooking) {
-        await supabase.from('bookings').upsert(currentBooking, { onConflict: 'id' });
-      }
+      if (currentBooking) { await supabase.from('bookings').upsert(currentBooking, { onConflict: 'id' }); }
       setSaveMessage("保存しました！");
-      setTimeout(() => { 
-        setSaveMessage("");
-        setPage('admin-top'); 
-      }, 1000);
-    } catch (error) {
-      setSaveMessage("保存に失敗しました");
-      setTimeout(() => setSaveMessage(""), 3000);
-    }
+      setTimeout(() => { setSaveMessage(""); setPage('admin-top'); }, 1000);
+    } catch (error) { setSaveMessage("保存に失敗しました"); setTimeout(() => setSaveMessage(""), 3000); }
   };
 
   const closeAllModals = () => {
-    setShowColorTypePicker(null); setShowColorNumberPicker(null); setShowReset(null);
+    setShowConfirmDone(null); setShowColorTypePicker(null); setShowColorNumberPicker(null); setShowReset(null);
   };
+
+  // 🌟【完了リストの日付別グループ化ロジック】
+  const currentMonthHistory = historyList.filter(h => h.facility === activeFacility && h.date.startsWith(monthKeySlash));
+  const groupedDone = currentMonthHistory.reduce((acc, h) => {
+    // allMembersInTaskに含まれている人、または当日追加の人だけを対象にする
+    if (allMembersInTask.some(m => m.name === h.name) || h.isExtra) {
+      if (!acc[h.date]) acc[h.date] = [];
+      acc[h.date].push(h);
+    }
+    return acc;
+  }, {});
+  const sortedDoneDates = Object.keys(groupedDone).sort((a, b) => b.localeCompare(a));
 
   return (
     <div style={containerStyle}>
@@ -209,7 +202,7 @@ export default function TaskMode_PC({
         {/* 左カラム：施術待ち */}
         <section style={columnStyle}>
           <div style={columnHeader}>
-            <h3>⏳ 施術待ち</h3>
+            <h3>⏳ 施術待ち ({yetMembers.length}名)</h3>
             <div style={sortTabGroup}>
               <button onClick={()=>setLeftSort("room")} style={sortTab(leftSort==="room")}>部屋順</button>
               <button onClick={()=>setLeftSort("name")} style={sortTab(leftSort==="name")}>名前順</button>
@@ -228,13 +221,11 @@ export default function TaskMode_PC({
                 <button onClick={(e) => {e.stopPropagation(); setShowCancelConfirm(m)}} style={inlineCancelBtn}>キャンセル</button>
               </div>
             ))}
-            {yetMembers.length === 0 && (
-              <div style={{textAlign:'center', color:'#94a3b8', marginTop:'100px'}}>待ちの方はいません</div>
-            )}
+            {yetMembers.length === 0 && <div style={{textAlign:'center', color:'#94a3b8', marginTop:'100px'}}>施術待ちの方はいません</div>}
           </div>
         </section>
 
-        {/* 右カラム：完了・キャンセル */}
+        {/* 右カラム：完了・キャンセル（日付別グループ） */}
         <section style={{...columnStyle, backgroundColor: '#f8fafc', borderLeft: '2px solid #e2e8f0'}}>
           <div style={columnHeader}>
             <h3>✅ 完了・キャンセル</h3>
@@ -244,32 +235,40 @@ export default function TaskMode_PC({
             </div>
           </div>
           <div style={scrollArea} ref={doneListRef}>
-            {[...doneMembers, ...cancelMembers].sort(sortFn(rightSort)).map((m, idx) => {
-              // 今月の履歴を探す
-              const hist = historyList.find(h => h.name === m.name && h.facility === activeFacility && h.date.startsWith(monthKeySlash));
-              const isCancel = m.status === 'cancel';
-              return (
-                <div key={idx} onClick={() => setShowReset(m)} style={{...doneCardStyle, borderColor: isCancel ? '#fecaca' : '#10b981'}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:'12px', color:'#64748b'}}>{m.room}号室</div>
-                    <b>{m.name} 様</b>
-                    {hist && (
-                      <div style={{marginTop:'4px'}}>
-                        <div style={doneMenuDetail}>{hist.menu}</div>
-                        {hist.date !== todaySlash && (
-                          <div style={{fontSize:'10px', color:'#10b981', fontWeight:'bold', marginTop:'2px'}}>
-                            ✨ {hist.date.split('/')[2]}日に施術済み
-                          </div>
-                        )}
-                      </div>
-                    )}
+            
+            {/* 🌟 日付ごとのグループ表示 */}
+            {sortedDoneDates.map(date => (
+              <div key={date} style={doneDateGroupWrapper}>
+                <div style={doneDateHeader}>✨ {date === todaySlash ? '今日' : date.split('/')[2] + '日'}の完了分 ({groupedDone[date].length}名)</div>
+                {groupedDone[date].sort(sortFn(rightSort)).map((h, idx) => (
+                  <div key={idx} onClick={() => setShowReset(h)} style={doneCardStyle}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:'11px', color:'#64748b'}}>{h.room}号室</div>
+                      <b style={{fontSize:'15px', color:'#475569'}}>{h.name} 様</b>
+                      <div style={doneMenuDetail}>{h.menu}</div>
+                    </div>
+                    <span style={{...badgeStyle, backgroundColor: '#10b981'}}>完了</span>
                   </div>
-                  <span style={{...badgeStyle, backgroundColor: isCancel ? '#ef4444' : '#10b981'}}>
-                    {isCancel ? '欠席' : '完了'}
-                  </span>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            ))}
+
+            {/* キャンセル（欠席）枠 */}
+            {cancelMembers.length > 0 && (
+              <div style={{...doneDateGroupWrapper, marginTop:'20px'}}>
+                <div style={{...doneDateHeader, color:'#ef4444', borderColor:'#fecaca'}}>🚩 欠席（キャンセル） ({cancelMembers.length}名)</div>
+                {cancelMembers.sort(sortFn(rightSort)).map((m, idx) => (
+                  <div key={idx} onClick={() => setShowReset(m)} style={{...doneCardStyle, borderColor: '#fecaca'}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:'11px', color:'#64748b'}}>{m.room}号室</div>
+                      <b style={{fontSize:'15px', color:'#ef4444'}}>{m.name} 様</b>
+                    </div>
+                    <span style={{...badgeStyle, backgroundColor: '#ef4444'}}>欠席</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {isAllFinished && (
               <div ref={finishBtnRef} style={{ padding: '20px 0' }}>
                 <button onClick={() => setShowConfirmPopup(true)} style={finishBtnStyle}>お疲れさまでした♡</button>
@@ -279,23 +278,31 @@ export default function TaskMode_PC({
         </section>
       </div>
 
-      {saveMessage && (
-        <div style={toastStyle}>{saveMessage}</div>
+      {saveMessage && ( <div style={toastStyle}>{saveMessage}</div> )}
+
+      {/* 🌟 施術完了確認ポップアップ (PC用) */}
+      {showConfirmDone && (
+        <div style={overlayStyle} onClick={() => setShowConfirmDone(null)}>
+          <div style={modalStyle} onClick={e => e.stopPropagation()}>
+            <h3 style={{color:'#1e3a8a'}}>{showConfirmDone.name} 様</h3>
+            <div style={{fontSize: '22px', fontWeight:'bold', color: '#1e293b', margin: '20px 0 30px'}}>施術完了ですか？</div>
+            <div style={{display:'flex', gap:'20px'}}>
+              <button onClick={() => onConfirmDoneOk(showConfirmDone)} style={{...confirmYesBtn, backgroundColor: '#10b981', flex:1}}>OK</button>
+              <button onClick={() => setShowConfirmDone(null)} style={{...confirmNoBtn, flex:1}}>NO</button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* キャンセル確認ポップアップ */}
+      {/* キャンセル確認 */}
       {showCancelConfirm && (
         <div style={overlayStyle} onClick={() => setShowCancelConfirm(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
             <h3 style={{color:'#1e3a8a'}}>{showCancelConfirm.name} 様</h3>
-            <div style={{fontSize: '16px', color: '#64748b', margin: '15px 0 25px'}}>
-              予約をキャンセル（欠席）扱いに<br/>しますか？
-            </div>
+            <div style={{fontSize: '16px', color: '#64748b', margin: '15px 0 25px'}}>予約をキャンセル（欠席）扱いにしますか？</div>
             <div style={{display:'flex', flexDirection:'column', gap:'12px'}}>
-              <button onClick={() => executeCancelMember(showCancelConfirm)} 
-                style={confirmYesBtn}>はい、キャンセルします</button>
-              <button onClick={() => setShowCancelConfirm(null)} 
-                style={confirmNoBtn}>いいえ、戻ります</button>
+              <button onClick={() => executeCancelMember(showCancelConfirm)} style={confirmYesBtn}>はい、キャンセルします</button>
+              <button onClick={() => setShowCancelConfirm(null)} style={confirmNoBtn}>いいえ、戻ります</button>
             </div>
           </div>
         </div>
@@ -306,32 +313,21 @@ export default function TaskMode_PC({
         <div style={fullOverlayStyle} onClick={() => setShowConfirmPopup(false)}>
           <div style={popupWrapperStyle} onClick={e => e.stopPropagation()}>
             <TaskConfirmMode
-              historyList={historyList}
-              bookingList={bookingList}
-              facilityName={activeFacility}
-              user={user}
-              setPage={(target) => {
-                if (target === 'task') setShowConfirmPopup(false);
-                else setPage(target); 
-              }}
-              completeFacilityBooking={async () => {
-                if (refreshAllData) await refreshAllData();
-                setShowConfirmPopup(false);
-                setPage('admin-history');
-              }}
+              historyList={historyList} bookingList={bookingList} facilityName={activeFacility} user={user}
+              setPage={(target) => { if (target === 'task') setShowConfirmPopup(false); else setPage(target); }}
+              completeFacilityBooking={async () => { if (refreshAllData) await refreshAllData(); setShowConfirmPopup(false); setPage('admin-history'); }}
             />
           </div>
         </div>
       )}
 
-      {/* 当日追加ポップアップ */}
+      {/* 当日追加 */}
       {showAddMember && (
         <div style={overlayStyle} onClick={() => setShowAddMember(false)}>
           <div style={{...modalStyle, width:'500px', maxHeight:'80vh', display:'flex', flexDirection:'column'}} onClick={e => e.stopPropagation()}>
             <h3 style={{margin:'0 0 15px'}}>当日追加</h3>
             <div style={{flex:1, overflowY:'auto', textAlign:'left'}}>
-              {users.filter(u => u.facility === activeFacility && !allMembersInTask.some(m => m.name === u.name))
-                .sort(sortFn(addSearchSort)).map(u => (
+              {users.filter(u => u.facility === activeFacility && !allMembersInTask.some(m => m.name === u.name)).sort(sortFn(addSearchSort)).map(u => (
                 <div key={u.id} style={addSearchRow}>
                   <span>{u.room} {u.name} 様</span>
                   <button onClick={async () => {
@@ -346,7 +342,7 @@ export default function TaskMode_PC({
         </div>
       )}
 
-      {/* カラーリタッチ・全体選択 */}
+      {/* カラー選択フロー */}
       {showColorTypePicker && (
         <div style={overlayStyle} onClick={() => setShowColorTypePicker(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
@@ -360,43 +356,29 @@ export default function TaskMode_PC({
         </div>
       )}
 
-      {/* 薬剤ブランドグループ表示 */}
       {showColorNumberPicker && (
         <div style={overlayStyle} onClick={() => setShowColorNumberPicker(null)}>
           <div style={{...modalStyle, width: '600px'}} onClick={e => e.stopPropagation()}>
             <h3 style={{color:'#1e3a8a', marginBottom:'20px'}}>{showColorNumberPicker.name} 様</h3>
-            <p style={{fontWeight:'bold', marginBottom:'20px', borderBottom:'1px solid #eee', paddingBottom:'10px'}}>
-              {pendingMenuName}
-            </p>
-            
+            <p style={{fontWeight:'bold', marginBottom:'20px', borderBottom:'1px solid #eee', paddingBottom:'10px'}}>{pendingMenuName}</p>
             <div style={{textAlign:'left', maxHeight:'50vh', overflowY:'auto', padding:'0 10px'}}>
-              {/* オリーブカーキー (OK) */}
-              <div style={{marginBottom:'20px'}}>
-                <div style={{fontSize:'14px', fontWeight:'bold', color:'#2d6a4f', marginBottom:'8px'}}>【オリーブカーキー】</div>
-                <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:'10px'}}>
-                  {colorList.filter(c => c.includes('OK')).map(c => (
-                    <button key={c} onClick={() => completeTask(showColorNumberPicker, pendingMenuName, c)} style={colorBtnStyle}>{c}</button>
-                  ))}
+              {['オリーブカーキー', 'プルーンアッシュ'].map(group => (
+                <div key={group} style={{marginBottom:'20px'}}>
+                  <div style={{fontSize:'14px', fontWeight:'bold', color: group==='オリーブカーキー'?'#2d6a4f':'#4b2c5e', marginBottom:'8px'}}>【{group}】</div>
+                  <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:'10px'}}>
+                    {colorList.filter(c => c.includes(group==='オリーブカーキー'?'OK':'PA')).map(c => (
+                      <button key={c} onClick={() => completeTask(showColorNumberPicker, pendingMenuName, c)} style={colorBtnStyle}>{c}</button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-
-              {/* プルーンアッシュ (PA) */}
-              <div style={{marginBottom:'20px'}}>
-                <div style={{fontSize:'14px', fontWeight:'bold', color:'#4b2c5e', marginBottom:'8px'}}>【プルーンアッシュ】</div>
-                <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:'10px'}}>
-                  {colorList.filter(c => c.includes('PA')).map(c => (
-                    <button key={c} onClick={() => completeTask(showColorNumberPicker, pendingMenuName, c)} style={colorBtnStyle}>{c}</button>
-                  ))}
-                </div>
-              </div>
+              ))}
             </div>
-
             <button onClick={() => { setShowColorNumberPicker(null); setShowColorTypePicker(showColorNumberPicker); }} style={modalCloseBtn}>戻る</button>
           </div>
         </div>
       )}
 
-      {/* 未完了に戻すポップアップ */}
+      {/* リセット確認 */}
       {showReset && (
         <div style={overlayStyle} onClick={() => setShowReset(null)}>
           <div style={modalStyle} onClick={e => e.stopPropagation()}>
@@ -410,12 +392,15 @@ export default function TaskMode_PC({
   );
 }
 
-// 🎨 デザイン定数（省略なし）
+// 🎨 デザイン定数（完全維持 + 追加分）
+const doneDateGroupWrapper = { marginBottom: '30px', padding: '10px', backgroundColor: '#fff', borderRadius: '15px', border: '1px solid #e2e8f0' };
+const doneDateHeader = { fontSize: '13px', fontWeight: 'bold', color: '#10b981', paddingBottom: '8px', marginBottom: '12px', borderBottom: '2px solid #ecfdf5' };
+
 const confirmYesBtn = { width: '100%', padding: '16px', borderRadius: '15px', border: 'none', backgroundColor: '#ef4444', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' };
 const confirmNoBtn = { width: '100%', padding: '16px', borderRadius: '15px', border: 'none', backgroundColor: '#64748b', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' };
 const toastStyle = { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', backgroundColor: 'rgba(30, 58, 138, 0.9)', color: 'white', padding: '16px 32px', borderRadius: '50px', zIndex: 20000, fontWeight: 'bold', fontSize: '18px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', pointerEvents: 'none' };
-const saveBtn = { padding: '8px 20px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' };
-const finishBtnStyle = { width: '100%', padding: '25px', backgroundColor: '#ff85d0', color: 'white', border: 'none', borderRadius: '20px', fontSize: '24px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 10px 20px rgba(255, 133, 208, 0.3)', transition: '0.3s' };
+const saveBtn = { padding: '8px 20px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' };
+const finishBtnStyle = { width: '100%', padding: '25px', backgroundColor: '#ff85d0', color: 'white', border: 'none', borderRadius: '20px', fontSize: '24px', fontWeight: 'bold', cursor: 'pointer' };
 const headerPanelStyle = { backgroundColor:'white', padding:'15px 25px', borderBottom:'1px solid #e2e8f0' };
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', backgroundColor:'#f8fafc' };
 const mainLayout = { display:'flex', flex:1, overflow:'hidden', padding:'10px', gap:'10px' };
@@ -423,17 +408,17 @@ const columnStyle = { flex:1, display:'flex', flexDirection:'column', background
 const columnHeader = { padding:'10px 15px', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center' };
 const scrollArea = { flex:1, overflowY:'auto', padding:'10px', scrollBehavior: 'smooth' };
 const cardStyle = { display:'flex', alignItems:'center', padding:'15px', borderRadius:'10px', border:'1px solid #e2e8f0', marginBottom:'10px', cursor:'pointer', backgroundColor:'#fff', transition:'0.2s' };
-const doneCardStyle = { display:'flex', padding:'12px', border:'2px solid', marginBottom:'8px', borderRadius:'10px', backgroundColor:'#fff', cursor:'pointer' };
-const inlineCancelBtn = { padding:'6px 12px', backgroundColor:'#fff', color:'#ef4444', border:'1px solid #ef4444', borderRadius:'6px', fontSize:'11px', fontWeight:'bold', cursor:'pointer' };
-const addMemberBtn = { padding:'8px 20px', backgroundColor:'#1e3a8a', color:'white', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer' };
+const doneCardStyle = { display:'flex', padding:'12px', border:'1px solid #edf2f7', marginBottom:'8px', borderRadius:'10px', backgroundColor:'#fff', cursor:'pointer' };
+const inlineCancelBtn = { padding:'6px 12px', backgroundColor:'#fff', color:'#ef4444', border:'1px solid #ef4444', borderRadius:'6px', fontSize:'11px', fontWeight:'bold' };
+const addMemberBtn = { padding:'8px 20px', backgroundColor:'#1e3a8a', color:'white', border:'none', borderRadius:'8px', fontWeight:'bold' };
 const addSearchRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px', borderBottom:'1px solid #f1f5f9' };
-const addPlusBtn = { width:'32px', height:'32px', borderRadius:'50%', border:'none', backgroundColor:'#3b82f6', color:'white', fontWeight:'bold', cursor:'pointer' };
-const modalRestoreBtn = { width:'100%', padding:'15px', backgroundColor:'#10b981', color:'white', border:'none', borderRadius:'12px', fontWeight:'bold', cursor:'pointer' };
-const doneMenuDetail = { fontSize:'12px', color:'#1e40af', backgroundColor:'#eff6ff', padding:'2px 6px', borderRadius:'4px', marginTop:'4px', display:'inline-block' };
+const addPlusBtn = { width:'32px', height:'32px', borderRadius:'50%', border:'none', backgroundColor:'#3b82f6', color:'white', fontWeight:'bold' };
+const modalRestoreBtn = { width:'100%', padding:'15px', backgroundColor:'#10b981', color:'white', border:'none', borderRadius:'12px', fontWeight:'bold' };
+const doneMenuDetail = { fontSize:'11px', color:'#1e40af', backgroundColor:'#eff6ff', padding:'2px 6px', borderRadius:'4px', marginTop:'4px', display:'inline-block' };
 const sortTabGroup = { display:'flex', gap:'4px' };
 const sortTab = (active) => ({ padding:'4px 10px', fontSize:'11px', borderRadius:'4px', border:'1px solid #cbd5e1', backgroundColor: active ? '#1e3a8a' : '#fff', color: active ? '#fff' : '#64748b', cursor:'pointer' });
 const progressValue = { fontSize:'14px', fontWeight:'bold', marginTop:'5px' };
-const badgeStyle = { color:'white', padding:'2px 8px', borderRadius:'4px', fontSize:'12px', height:'fit-content' };
+const badgeStyle = { color:'white', padding:'2px 8px', borderRadius:'4px', fontSize:'11px', height:'fit-content' };
 const nameStyle = { fontSize:'18px', fontWeight:'bold' };
 const hopeMenuBadgeStyle = { fontSize:'11px', padding:'2px 6px', backgroundColor:'#f1f5f9', color:'#475569', borderRadius:'4px' };
 const overlayStyle = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.5)', zIndex: 100, display:'flex', justifyContent:'center', alignItems:'center' };
